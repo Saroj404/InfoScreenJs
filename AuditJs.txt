@@ -1,0 +1,530 @@
+const pqOptions = {
+    width: "auto",
+    height: 250,
+    showTitle: false,
+    showHeader: true,
+    showTop: true,
+    showToolbar: false,
+    showBottom: true,
+    wrap: true,
+    hwrap: false,
+    sortable: false,
+    editable: false,
+    resizable: false,
+    collapsible: false,
+    draggable: true, dragColumns: { enabled: true },
+    scrollModel: { autoFit: true },
+    numberCell: { show: true, resizable: true, title: "S.N.", minWidth: 30 },
+    pageModel: { curPage: 1, rPP: 10, type: "remote" },
+    columnTemplate: { wrap: true, editable: false, dataType: "string", halign: "center", hvalign: "center", resizable: true, styleHead: { 'font-weight': "bold" } },
+};
+
+function AuditReportTypeViewModel() {
+    const self = this;
+    isNullOrEmpty = function (str) {
+        if (str === undefined || str === null) {
+            return true;
+        } else if (typeof str === "string") {
+            return (str.trim() === "");
+        } else {
+            return false;
+        }
+    };
+    var methodName = function (str) {
+        if (str === undefined || str === null) {
+            return "";
+        } else if (str.toUpperCase() == "UA") {
+            return "GetUnApprovedList";
+        } else if (str.toUpperCase() == "A") {
+            return "GetApprovedList";
+        }
+    };
+    var ajaxConfig = {
+        success: function () { },
+        method: "POST",
+        async: false,
+        baseUrl: "/AUDITREPORTTYPE/",
+        url: "",
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        data: "",
+        error: function (data) {
+
+        }
+    },//eof the ajax path
+        ajaxCall = function (config) {
+            debugger
+            $.ajax({
+                method: config.method,
+                async: config.async,
+                url: config.url,
+                contentType: config.contentType,
+                dataType: config.dataType,
+                data: config.data,
+                success: function (data) {
+                    ajaxConfig.success(data);
+                },
+
+                error: function (error) {
+                    ajaxConfig.error(error);
+                }
+            });
+        },
+        models = {
+            Transaction: function (item) {
+                item = item || {};
+                this.TranID = ko.observable(item.TranID||'');
+                this.ReportTypeName = ko.observable(item.ReportTypeName || '');
+                this.ReportTypeNameLoc = ko.observable(item.ReportTypeNameLoc || '');
+                this.StackId = ko.observable(item.StackId || '0');
+                this.Status = ko.observable(item.Status || 0);
+            },
+            UiElements : function () {
+               // koPageInit();
+                self.lblText = ko.observable();
+                self.Transaction = ko.observable(new models.Transaction());
+                self.StackNo = ko.observable();
+                self.HasRightsForApproval = ko.observable();
+                self.HasRightsForDelete = ko.observable();
+                self.enableAuditReport = ko.observable(false);
+            },
+        }
+
+    UiEvents = {
+        Buttons: function () {
+            var actions = {
+                newClick: function () { UiEvents.ButtonsModeChange("new"); },
+                cancelClick: function () { UiEvents.ButtonsModeChange("cancel"); },
+                saveClick: function () { UiEvents.ButtonsModeChange("save"); },
+                deleteClick: function () { UiEvents.ButtonsModeChange("delete"); },
+                approveClick: function () { UiEvents.ButtonsModeChange("approve"); }
+            };
+            self.buttonSet = new buttons(actions);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttons = ko.observableArray([
+                self.buttonSet.newButton,
+                self.buttonSet.cancelButton,
+                self.buttonSet.saveButton,
+                self.buttonSet.deleteButton,
+                self.buttonSet.approveButton,
+                self.buttonSet.exitButton
+            ]);
+            self.buttonSet.newButton.visible(true);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttonSet.saveButton.visible(false);
+            self.buttonSet.deleteButton.visible(false);
+            self.buttonSet.approveButton.visible(false);
+            self.buttonSet.exitButton.visible(true);
+        },
+        ButtonsModeChange: function (mode) {
+            switch (mode) {
+                case 'new':
+                    self.enableAuditReport(true);
+                    self.buttonSet.newButton.visible(false);
+                    self.buttonSet.cancelButton.visible(true);
+                    self.buttonSet.saveButton.visible(true);
+                    self.buttonSet.exitButton.visible(true);
+                    UiEvents.Functions.ClearFields();
+                    $('#txtDocTypeName').focus();
+                    break;
+                case 'cancel':
+                    self.lblText('');
+                    self.enableAuditReport(false);
+                    self.buttonSet.newButton.visible(true);
+                    self.buttonSet.cancelButton.visible(false);
+                    self.buttonSet.saveButton.visible(false);
+                    self.buttonSet.deleteButton.visible(false);
+                    self.buttonSet.approveButton.visible(false);
+                    self.buttonSet.exitButton.visible(true);
+                    UiEvents.Functions.ClearFields();
+                    break;
+                case 'save':
+                    if (UiEvents.Validate.SaveValidation()) {
+                        UiEvents.Ajax.Save("Create");
+                        //Create & Update
+                    }
+                    break;
+                case 'delete':
+                    UiEvents.Ajax.Delete(); //Delete
+                    break;
+                case 'approve':
+                    UiEvents.Ajax.Approve(self.Transaction().TranID()); //Approve
+                    break;
+                case 'Default':
+                    self.Transaction(new models.Transaction());
+                    self.buttonSet.newButton.visible(true);
+                    self.buttonSet.cancelButton.visible(false);
+                    self.buttonSet.saveButton.visible(false);
+                    self.buttonSet.deleteButton.visible(false);
+                    self.buttonSet.approveButton.visible(false);
+                    self.buttonSet.exitButton.visible(true);
+                    self.enableAuditReport(false);
+                    break;
+                default:
+            }
+        },
+        tabClickEvent: function () {
+
+            self.tabs = function () {
+                $("#tabs").tabs({
+                    activate: function (e, ui) {
+                        if (ui.newPanel.attr('id') == "UnApprovedTab") {
+                            ctrl = "#UnApprovedGrid";
+                            if ($(ctrl).pqGrid("instance")) {
+                                $(ctrl).pqGrid("destroy");
+                            }
+                            UiEvents.BranchWardGrid("UA", ctrl)
+
+                        } else if (ui.newPanel.attr('id') == "ApprovedTab") {
+                            ctrl = "#ApprovedGrid";
+                            if ($(ctrl).pqGrid("instance")) {
+                                $(ctrl).pqGrid("destroy");
+                            }
+                            UiEvents.BranchWardGrid("A", ctrl)
+                        }
+                    }
+                });
+            }
+        },
+        DeleteRevert: function (id, IsDeleted) {
+            debugger
+            const data = ko.toJS(self.Transaction());
+            data.TranID = id ? id : self.Transaction().TranID();
+            ajaxConfig.method = "POST";
+            ajaxConfig.url = ajaxConfig.baseUrl + "DeleteAuditReport"; // TRUE: DELETE AND FALSE: REVERT
+            ajaxConfig.data = JSON.stringify({
+                data: data,
+                "IsDeleted": IsDeleted
+            });
+            ajaxConfig.success = function (data) {
+                if (data.Success) {
+                    //if (self.UnapprovalDataId()) {
+                    //    Empower.Pmessage("Success", data.Message, redirectToUnapprovalDataHist);
+                    //} else {
+                        Empower.message("success", data.Message);
+                        UiEvents.ButtonsModeChange("Default");
+                        //UiEvents.ClearFields();
+                    //}
+                    //self.mode("");
+                } else {
+                    Empower.message("warning", data.Message);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        BranchWardGrid: function (actionName, control) {
+            debugger
+            const allData = {
+                location: "remote",
+                contentType: "application/json; charset=UTF-8",
+                dataType: "JSON",
+                method: "GET",
+                url: ajaxConfig.baseUrl + methodName(actionName),
+                recIndx: "TranId",
+                beforeSend: function (jqXHR, settings) {
+                    return true;
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    console.error(errorThrown);
+                },
+                getData: function (result) {
+                    if (result && result.Success) {
+                        const data = result.Data;
+                        //{curPage: int, data: [], totalRecords: int}
+                        return { curPage: result.CurrentPage, totalRecords: result.TotalRecords, data: data };
+                    }
+                    else {
+                        Empower.message("Warning", result.Message || "Warning ! - Error Occured...!!!");
+                        return { curPage: 0, totalRecords: 0, data: [] };;
+                    }
+                }
+            };
+
+            const options = Object.assign({}, pqOptions);
+
+            if (actionName == "UA") {
+                options.colModel = [
+                    { title: "Report Type Name", dataIndx: "ReportTypeName", width: "40%", align: "center" },
+                    { title: "Report Type Name(Local)", dataIndx: "ReportTypeNameLoc", width: "40%", align: "center" },
+                    {
+                        title: "Action", render: function (ui) {
+                            debugger
+                            return `<button type='button' style="margin-left:30px;" onclick='obj.editRow("${ui.rowData.TranID}",true,"${ui.rowData.Status}")'><i class="ic-edit"></i></button> <button type='button' style="margin-left:30px;" onclick='obj.deleteRow("${ui.rowData.TranID}","UA")'><i class="ic-delete"></i></button>`
+                        }, width: "20%"
+                    },
+
+                ];
+            } else if (actionName == "A") {
+                options.colModel = [
+                    { title: "Report Type Name", dataIndx: "ReportTypeName", width: "40%", align: "center" },
+                    { title: "Report Type Name(Local)", dataIndx: "ReportTypeNameLoc", width: "40%", align: "center" },
+                    {
+                        title: "Action", render: function (ui) {
+                            if (ui.rowData.Status == "1") {
+                                return `<button type='button' style="margin-left:30px;" onclick='obj.editRow("${ui.rowData.TranID}",false,"${ui.rowData.Status}")'><i class="ic-visible"></i></button> <button type='button' style="margin-left:30px;" style="height: 22px;" onclick='obj.deleteRow("${ui.rowData.TranID}","A")'><i class="fas fa-undo"></i></button>`
+                            } else {
+                                return `<button type='button' onclick='obj.editRow("${ui.rowData.TranID}", false)'><i class="ic-visible"></i></button>`;
+                            }
+                        }, width: "20%"
+                    },
+
+                ];
+            }
+            options.dataModel = allData;
+            options.height = 380;
+
+            $(control).pqGrid(options);
+        },
+        GetAuditReportById: function (id) {
+
+            var TranId = id ? id : self.Transaction().TranID();
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + "GetAuditReportById?TranId=" + id;
+            ajaxConfig.success = function (data) {
+                ;
+                debugger
+                if (data.Message) {
+                    Empower.message("Warning", data.Message);
+                    return;
+                }
+                ;
+                if (data.Success && data.Data) {
+                    data = data.Data;
+                    self.Transaction(new models.Transaction(data[0]));
+
+                } else {
+                    UiEvents.ClearFields();
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+         Validate:
+             {
+             SaveValidation: function () {
+                     if (isNullOrEmpty(self.Transaction().ReportTypeName())) {
+                         Empower.message("Warning", "Warning! - Audit Report Type Name cannot be empty...!!!", $("#txtAuditReportType"));
+                        return false;
+                     }
+                     else if (isNullOrEmpty(self.Transaction().ReportTypeNameLoc())) {
+                         Empower.message("Warning", "Warning! - Audit Report Type Name(Local) cannot be empty...!!!", $("#txtAuditReportTypeLoc"));
+                        return false;
+                      }
+                      else {
+                        return true;
+                      }
+                  }
+             },
+        Functions: {
+            ClearFields: function () {
+                self.Transaction(new models.Transaction());
+            },
+            ChangeLanguage: function () {
+                $('#txtAuditReportTypeLoc').on('keyup', function () {
+                    var input = $(this).val();
+                    $(this).val(kantipurConfigToUnicode(input));
+                });
+            }
+        },
+        enableDisable: {
+            stackMode: function () {
+                self.enableAuditReport(false);
+                self.buttonSet.cancelButton.visible(false);
+                self.buttonSet.newButton.visible(false);
+                self.buttonSet.saveButton.visible(false);
+                if (self.HasRightsForApproval()) {
+                    self.buttonSet.approveButton.visible(true);
+                }
+                else {
+                    self.buttonSet.approveButton.visible(false);
+                }
+
+                if (self.HasRightsForDelete()) {
+                    self.buttonSet.deleteButton.visible(true);
+                }
+                else {
+                    self.buttonSet.deleteButton.visible(false);
+                }
+            }
+        },//eof the enableDisable
+        Ajax :{
+            Save: function (operationMode) {
+                debugger
+                let isApprove = false;
+                if (self.HasRightsForApproval() && (self.Transaction().TranID())==0) {
+                    Empower.confirm("Confirm To Approve?", function () {
+                        isApprove = true;
+                        SaveAjax();
+                    }, SaveAjax);
+                } else {
+                    SaveAjax();
+                }
+
+                function SaveAjax() {
+                    ajaxConfig.method = "POST";
+                    ajaxConfig.url = ajaxConfig.baseUrl + operationMode;
+                    ajaxConfig.data = JSON.stringify({
+                        "obj": ko.toJS(self.Transaction()), isApprove: isApprove
+                    }),
+                        ajaxConfig.success = function (data) {
+                            if (data.Error) {
+                                Empower.message('Warning', data.Message);
+                                return;
+                            }
+                            else {
+                                Empower.message('SUCCESS', data.Message);
+                                UiEvents.ButtonsModeChange("Default");
+                            }
+                        }
+                    ajaxCall(ajaxConfig);
+                }
+            },
+            Approve: function (id) {
+                ajaxConfig.method = "POST";
+                ajaxConfig.data = JSON.stringify({ 'id': id });
+                ajaxConfig.url = ajaxConfig.baseUrl + "Approve";
+                ajaxConfig.success = function (data) {
+                    if (data.Success) {
+                        Empower.Pmessage("Success", data.Message, redirectToUnapprovalDataHist);
+                    } else {
+                        Empower.message("Warning", data.Message || "Warning ! - Error occured while Approving data...!!!");
+                    }
+                };
+                ajaxConfig.error = function (data) {
+                    Empower.message("Warning", data.Message || "Warning ! - Error occured...!!!");
+                };
+                ajaxCall(ajaxConfig);
+                //self.ToleSetup().IsEdit(false);
+            },
+            Delete: function () {
+                ajaxConfig.method = "POST";
+                ajaxConfig.url = ajaxConfig.baseUrl + 'DeleteTransaction';
+                ajaxConfig.data = JSON.stringify({
+                    "obj": ko.toJS(self.Transaction()),
+                }),
+                    ajaxConfig.success = function (data) {
+                        if (data.Error) {
+                            Empower.message('Warning', data.Message);
+                            return;
+                        }
+                        else {
+                            Empower.Pmessage('SUCCESS', data.Message, window.redirectToUnapprovalDataHist);
+                        }
+                    }
+                ajaxCall(ajaxConfig);
+            },
+            getStackData: function () {
+                debugger
+                var stackNo = getUnapprovedDataId();
+                if (stackNo) {
+                    self.StackNo(stackNo);
+                    ajaxConfig.method = "GET";
+                    ajaxConfig.url = ajaxConfig.baseUrl + 'getStackData';
+                    ajaxConfig.data = { "stackNo": self.StackNo() }
+                    ajaxConfig.success = function (data) {
+                        debugger;
+                        if (data.Success) {
+                            data = data.Data;
+                            self.Transaction().TranID(data.TranId);
+                            self.Transaction().ReportTypeName(data.ReportTypeName);
+                            self.Transaction().ReportTypeNameLoc(data.ReportTypeNameLoc);
+                            self.Transaction().StackId(stackNo);
+                            UiEvents.enableDisable.stackMode();
+                        }
+                        else {
+                            Empower.message('Warning', data.Message);
+                            return;
+                        }
+                    }
+                    ajaxCall(ajaxConfig);
+                }
+            },//eof the stack data
+            checkRightsForApproval: function () {
+                debugger
+                ajaxConfig.method = "GET";
+                ajaxConfig.url = ajaxConfig.baseUrl + 'checkRightsForApproval';
+                ajaxConfig.data = {}
+                ajaxConfig.success = function (data) {
+                    if (data) {
+                        self.HasRightsForApproval(data.Data);
+                    }
+                }
+                ajaxCall(ajaxConfig);
+            },//eof CheckRightsForApproval
+            checkRightsForDelete: function () {
+                ajaxConfig.method = "GET";
+                ajaxConfig.url = ajaxConfig.baseUrl + 'checkRightsForDelete';
+                ajaxConfig.data = {}
+                ajaxConfig.success = function (data) {
+                    if (data) {
+                        self.HasRightsForDelete(data.Data);
+                    }
+                }
+                ajaxCall(ajaxConfig);
+            } //eof DeleteRights
+        }
+    };
+    self.editRow = function (id, mode,status) {
+        debugger
+        self.Transaction(new models.Transaction);
+        self.Transaction().Status(status);
+        UiEvents.GetAuditReportById(id);
+        $("#tabs").tabs({ active: 0 });
+        if (mode) {
+
+            if (self.Transaction().Status() == 0) {
+                self.enableAuditReport(true);
+                self.buttonSet.newButton.visible(false);
+                self.buttonSet.cancelButton.visible(true);
+                self.buttonSet.saveButton.visible(true);
+                self.buttonSet.deleteButton.visible(false);
+                self.buttonSet.approveButton.visible(false);
+                //self.buttonSet.queryButton.visible(false);
+                self.buttonSet.exitButton.visible(true);
+            }
+            else {
+                self.buttonSet.newButton.visible(true);
+                self.buttonSet.cancelButton.visible(false);
+                self.buttonSet.saveButton.visible(false);
+                self.buttonSet.deleteButton.visible(false);
+                self.buttonSet.approveButton.visible(false);
+                //self.buttonSet.queryButton.visible(false);
+                self.buttonSet.exitButton.visible(true);
+            }
+        }
+        else {
+            self.enableAuditReport(false);
+            self.buttonSet.newButton.visible(true);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttonSet.saveButton.visible(false);
+            self.buttonSet.deleteButton.visible(false);
+            self.buttonSet.approveButton.visible(false);
+            //self.buttonSet.queryButton.visible(false);
+            self.buttonSet.exitButton.visible(true);
+        }
+    };
+    self.deleteRow = function (id, action) {
+        debugger
+        Empower.confirm("Confirm To " + ((action == "A") ? "Revert" : "Delete") + "?", function () {
+            UiEvents.DeleteRevert(id, (action == "A") ? false : true);
+            $("#tabs").tabs({ active: 0 });
+        });
+    };
+    init = function () {
+        models.UiElements();
+        UiEvents.Buttons();
+        self.LocalBodyChange = UiEvents.Functions.ChangeLanguage;
+        UiEvents.Ajax.checkRightsForApproval();
+        UiEvents.Ajax.checkRightsForDelete();
+        UiEvents.Ajax.getStackData();
+        UiEvents.tabClickEvent();
+        self.tabs();
+    };
+    init();
+};
+
+var obj;
+$(document).ready(function () {
+    obj = new AuditReportTypeViewModel();
+    ko.applyBindings(obj);
+    $("#tabs").tabs();
+});

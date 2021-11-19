@@ -1,0 +1,826 @@
+const pqOptions = {
+    width: "auto",
+    height: 250,
+    showTitle: false,
+    showHeader: true,
+    showTop: true,
+    showToolbar: false,
+    showBottom: true,
+    wrap: true,
+    hwrap: false,
+    sortable: false,
+    editable: false,
+    resizable: false,
+    collapsible: false,
+    draggable: true, dragColumns: { enabled: true },
+    scrollModel: { autoFit: true },
+    numberCell: { show: true, resizable: true, title: "S.N.", minWidth: 30 },
+    pageModel: { curPage: 1, rPP: 10, type: "remote" },
+    columnTemplate: { wrap: true, editable: false, dataType: "string", halign: "center", hvalign: "center", resizable: true, styleHead: { 'font-weight': "bold" } },
+};
+
+function IndexVM() {
+    const self = this;
+
+    var isNullOrEmpty = function (str) {
+        if (str === undefined || str === null) {
+            return true;
+        } else if (typeof str === "string") {
+            return (str.trim() === "");
+        } else {
+            return false;
+        }
+    };
+    var methodName = function (str) {
+        if (str === undefined || str === null) {
+            return "";
+        } else if (str.toUpperCase() == "UA") {
+            return "GetUnApprovedList";
+        } else if (str.toUpperCase() == "A") {
+            return "GetApprovedList";
+        }
+    };
+    var ajaxConfig = {
+        success: function () { },
+        method: "POST",
+        async: false,
+        baseUrl: "/BranchWard/",
+        url: "",
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        data: "",
+        error: function (data) {
+
+        }
+    };//eof the ajax path
+    ajaxCall = function (config) {
+        
+        $.ajax({
+            method: config.method,
+            async: config.async,
+            url: config.url,
+            contentType: config.contentType,
+            dataType: config.dataType,
+            data: config.data,
+            success: function (data) {
+                ajaxConfig.success(data);
+            },
+
+            error: function (error) {
+                ajaxConfig.error(error);
+            }
+        });
+    };
+    
+    const models = {
+        Transaction: function (item) {
+            item = item || {};
+            this.BranchCode = ko.observable(item.BranchCode || "");
+            this.BranchName = ko.observable(item.BranchName || "");
+            this.EffectDate = ko.observable(item.EffectDate || "");
+            this.LocalBodyType = ko.observable(item.LocalBodyType || "");
+            this.LocalBodyCode = ko.observable(item.LocalBodyCode || "0");
+            this.LocalBodyName = ko.observable(item.LocalBodyName || "");
+            this.TranId = ko.observable(item.TranId || "");
+            this.Status = ko.observable(item.Status || 0);
+            this.TodayDate = ko.observable(item.TodayDate || "");
+            this.TransactionList = ko.observableArray(item.TransactionList || []);
+        },
+        Ward: function (item) {
+            item = item || {};
+            this.FromWardNo = ko.observable(item.FromWardNo || "");
+            this.ToWardNo = ko.observable(item.ToWardNo || "");
+        },
+        UiElements: function () {
+            self.Transaction = ko.observable(new models.Transaction());
+            self.Ward = ko.observable(new models.Ward());
+            self.WardList = ko.observableArray([]);
+            self.lblText = ko.observable();
+            //self.TransactionList = ko.observableArray([]);
+            self.enableTransaction = ko.observable(false);
+            self.enableTransactionWard = ko.observable(false);
+            self.UnapprovalDataId = ko.observable("");
+            self.hasRightstoApprove = ko.observable();
+            self.hasRightstoDelete = ko.observable();
+            self.LocalBodyType = ko.observableArray([{ Text: 'Rural Municipality', Id: '1' },
+            { Text: 'Municipality', Id: '2' },
+            { Text: 'Sub Metropolitian', Id: '3' },
+            { Text: 'Metropolitian', Id: '4' }
+            ]);
+        }
+    };
+    const UiEvents = {
+        Buttons: function () {
+            var actions = {
+                newClick: function () { UiEvents.ButtonsModeChange("new"); },
+                cancelClick: function () { UiEvents.ButtonsModeChange("cancel"); },
+                saveClick: function () { UiEvents.ButtonsModeChange("save"); },
+                deleteClick: function () { UiEvents.ButtonsModeChange("delete"); },
+                approveClick: function () { UiEvents.ButtonsModeChange("approve"); }
+            };
+            self.buttonSet = new buttons(actions);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttons = ko.observableArray([
+                self.buttonSet.newButton,
+                self.buttonSet.cancelButton,
+                self.buttonSet.saveButton,
+                self.buttonSet.deleteButton,
+                self.buttonSet.approveButton,
+                self.buttonSet.exitButton
+            ]);
+            self.buttonSet.newButton.visible(true);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttonSet.saveButton.visible(false);
+            self.buttonSet.deleteButton.visible(false);
+            self.buttonSet.approveButton.visible(false);
+            self.buttonSet.exitButton.visible(true);
+        },
+        ButtonsModeChange: function (mode) {
+            switch (mode) {
+                case 'new':
+                    self.enableTransaction(true);
+                    self.enableTransactionWard(true);
+                    self.buttonSet.newButton.visible(false);
+                    self.buttonSet.cancelButton.visible(true);
+                    self.buttonSet.saveButton.visible(true);
+                    self.buttonSet.exitButton.visible(true);
+                    $('#BranchCode').focus();
+                    break;
+                case 'cancel':
+                    self.lblText('');
+                    self.enableTransaction(false);
+                    self.enableTransactionWard(false);
+                    self.buttonSet.newButton.visible(true);
+                    self.buttonSet.cancelButton.visible(false);
+                    self.buttonSet.saveButton.visible(false);
+                    self.buttonSet.deleteButton.visible(false);
+                    self.buttonSet.approveButton.visible(false);
+                    self.buttonSet.exitButton.visible(true);
+                    UiEvents.functions.ClearFields();
+                    self.WardList([]);
+                    UiEvents.functions.WardSave("WardGrid");
+                    break;
+                case 'save':
+
+                    const msg = UiEvents.Validate();
+                    if (msg) {
+                        Empower.message("WARNING", msg);
+                        $("#tabs").tabs({ active: 0 });
+                        return;
+                    }
+
+                    if (self.hasRightstoApprove() && self.Transaction().Status() != 1) {
+                        Empower.confirm("Do You want To Approve?",
+                            () => UiEvents.SaveProcess(true),
+                            () => UiEvents.SaveProcess(false));
+                    } else {
+                        UiEvents.SaveProcess(false);
+                    }
+                    break;
+                case 'delete':
+                    UiEvents.DeleteRevert("", true);//Delete
+                    UiEvents.functions.ClearFields();
+                    self.WardList([]);
+                    UiEvents.functions.WardSave("WardGrid");
+                    UiEvents.ButtonsModeChange("Default");
+                    break;
+                case 'Default':
+                    self.buttonSet.newButton.visible(true);
+                    self.buttonSet.cancelButton.visible(false);
+                    self.buttonSet.saveButton.visible(false);
+                    self.buttonSet.deleteButton.visible(false);
+                    //self.buttonSet.queryButton.visible(true);
+                    self.buttonSet.approveButton.visible(false);
+                    self.buttonSet.exitButton.visible(true);
+                    break;
+                case 'approve':
+                    debugger
+                    const Transaction = ko.toJS(self.Transaction());
+                    ajaxConfig.method = "POST";
+                    ajaxConfig.url = ajaxConfig.baseUrl + "ApproveBranchWardScoping";
+                    ajaxConfig.data = JSON.stringify({
+                        data: Transaction
+                    });
+                    ajaxConfig.success = function (data) {
+                        if (data.Success) {
+                            if (self.UnapprovalDataId()) {
+                                Empower.Pmessage("Success", data.Message, redirectToUnapprovalDataHist);
+
+                            } else {
+                                Empower.message("success", data.Message);
+                                UiEvents.ButtonsModeChange("Default");
+                                UiEvents.functions.ClearFields();
+                            }
+                            //self.IsNewClick(false);
+                            //self.mode("");
+                        } else {
+                            Empower.message("warning", data.Message);
+                        }
+                    }
+                    ajaxCall(ajaxConfig);
+                    break;
+                default:
+                    
+            }
+        },
+        autocomplete: function () {
+            let aa = ajaxConfig.baseUrl;
+            debugger;
+            $("#BranchName").EmpowerAutoComplete({
+                Url: ajaxConfig.baseUrl + "GetBranch",
+                dataJson: function (request) {
+                    return {
+                        "BranchCode": request.term && "",
+                        "isAutocomplete": true
+                    }
+                },
+                labelProperty: "BranchName",
+                valueProperty: "BranchCode",
+                onDataEmpty: function () {
+                    self.Transaction().BranchCode("");
+                    self.Transaction().BranchName("");
+                },
+                showValue: false,
+                select: function (event, ui) {
+                    self.Transaction().BranchName(ui.label);
+                    self.Transaction().BranchCode(ui.value);
+                },
+                error: function (xhr, status, error) {
+                }
+            });
+
+            $("#LocalBodyName").EmpowerAutoComplete({
+                Url: ajaxConfig.baseUrl + "GetLocalBodyName",
+                dataJson: function (request) {
+                    return {
+                        "LocalBodyCode": request.term,
+                        "LocalBodyTypeId": (!self.Transaction().LocalBodyType() || self.Transaction().LocalBodyType() === undefined) ? 0 : self.Transaction().LocalBodyType(),
+                        "isAutocomplete": true
+                    }
+                },
+                labelProperty: "LocalBodyName",
+                valueProperty: "LocalBodyCode",
+                onDataEmpty: function () {
+                    self.Transaction().LocalBodyCode("");
+                    self.Transaction().LocalBodyName("");
+                },
+                showValue: false,
+
+                select: function (event, ui) {
+                    self.Transaction().LocalBodyName(ui.label);
+                    self.Transaction().LocalBodyCode(ui.value);
+                },
+                error: function (xhr, status, error) {
+                }
+            });
+
+        },
+        Validate: function () {
+            var msg = "";
+            var master = ko.toJS(self.Transaction());
+
+            if (!(master.BranchCode && master.BranchName)) {
+                msg = "Warning - ! Branch is not defined ...!!!";
+                UiEvents.focus("BranchCode");
+                return msg;
+            } else if (!master.EffectDate) {
+                msg = "Warning - ! Effect date is not defined ...!!!";
+                UiEvents.focus("txtEffectDate");
+                return msg;
+            } else if (!master.LocalBodyType) {
+                msg = "Warning - ! Local body type is not defined ...!!!"
+                UiEvents.focus("ddlLocalBodyType");
+                return msg;
+            } else if (!(master.LocalBodyName) || Number(master.LocalBodyCode) <= 0) {
+                msg = "Warning - ! Local body is not defined ...!!!"
+                UiEvents.focus("LocalBodyName");
+                return msg;
+            }
+            else if (self.WardList().length < 1) {
+                msg = "Warning - ! Ward no. list is not defined ...!!!"
+                UiEvents.focus("fromward");
+                return msg;
+            }
+            return msg;
+        },
+        focus: function (id) {
+            document.getElementById(id).focus();
+        },
+        DeleteRevert: function (id, IsDeleted) {
+            const data = ko.toJS(self.Transaction());
+            data.TranId = id ? id : self.Transaction().TranId();
+            ajaxConfig.method = "POST";
+            ajaxConfig.url = ajaxConfig.baseUrl + "DeleteBranchWardScoping"; // TRUE: DELETE AND FALSE: REVERT
+            ajaxConfig.data = JSON.stringify({
+                data: data,
+                "IsDeleted": IsDeleted
+            });
+            ajaxConfig.success = function (data) {
+                if (data.Success) {
+                    if (self.UnapprovalDataId()) {
+                        Empower.Pmessage("Success", data.Message, redirectToUnapprovalDataHist);
+                    } else {
+                        Empower.message("success", data.Message);
+                        UiEvents.buttonsModeChange("Default");
+                        UiEvents.clear.ClearFields();
+                    }
+                    self.mode("");
+                } else {
+                    Empower.message("warning", data.Message);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        GetBranchWardScopingById: function (id) {
+            
+            var TranId = id ? id : self.Transaction().TranId();
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + "GetBranchWardScopingById?TranId=" + id;
+            //ajaxConfig.data = JSON.stringify({
+            //    TranId: id
+            //});
+            ajaxConfig.success = function (data) {
+                ;
+
+                if (data.Message) {
+                    Empower.message("Warning", data.Message);
+                    return;
+                }
+                ;
+                if (data.Success && data.Data && data.Data.Item1.length > 0) {
+                    data = data.Data;
+                    self.Transaction(new models.Transaction(data.Item1[0]));
+                    self.WardList(data.Item2);
+                    
+
+                } else {
+                    UiEvents.ClearFields();
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        initCall: function () {
+            var UnapprovalDataId = getUnapprovedDataId();
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + "Init";
+            if (UnapprovalDataId) {
+                ajaxConfig.data = { id: UnapprovalDataId }
+            }
+            ajaxConfig.success = function (data) {
+                if (data.Success) {
+                    data = data.Data;
+                    self.hasRightstoApprove(data.approveRights);
+                    self.hasRightstoDelete(data.deleteRights);
+                    if (data.CollectionParameter) {
+                        self.UnapprovalDataId(UnapprovalDataId);
+                        data = data.CollectionParameter;
+                        self.Transaction(new models.transaction(data.Item1[0]));
+                        self.WardList(data.Item2);
+                        self.tabs();
+                        $("#tabs").tabs("disable", 1);
+                        $("#tabs").tabs("disable", 2);
+                        //for buttons from unapproval dashboard
+                        self.buttonSet.newButton.visible(false);
+                        self.buttonSet.cancelButton.visible(false);
+                        self.buttonSet.saveButton.visible(false);
+                        if (self.hasRightstoDelete()) {
+                            self.buttonSet.deleteButton.visible(true);
+                        } else {
+                            self.buttonSet.deleteButton.visible(false);
+                        }
+                        self.buttonSet.queryButton.visible(false);
+                        if (self.hasRightstoApprove()) {
+                            self.buttonSet.approveButton.visible(true);
+                        } else {
+                            self.buttonSet.approveButton.visible(false);
+                        }
+                        self.buttonSet.exitButton.visible(true);
+                    } else {
+                        //NO DATA FOUND
+                    }
+                } else {
+                    Empower.message("warning", data.Message);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        tabClickEvent: function () {
+            
+            self.tabs = function () {
+                $("#tabs").tabs({
+                    activate: function (e, ui) {
+                        if (ui.newPanel.attr('id') == "UnApprovedTab") {
+                            ctrl = "#UnApprovedGrid";
+                            if ($(ctrl).pqGrid("instance")) {
+                                $(ctrl).pqGrid("destroy");
+                            }
+                            UiEvents.BranchWardGrid("UA", ctrl)
+
+                        } else if (ui.newPanel.attr('id') == "ApprovedTab") {
+                            ctrl = "#ApprovedGrid";
+                            if ($(ctrl).pqGrid("instance")) {
+                                $(ctrl).pqGrid("destroy");
+                            }
+                            UiEvents.BranchWardGrid("A", ctrl)
+                        }
+                    }
+                });
+            }
+        },
+        SaveProcess: function (isApprove) {
+            
+            const TransactionData = ko.toJS(self.Transaction());
+            TransactionData.TransactionList = self.WardList();
+
+            ajaxConfig.method = "POST";
+            ajaxConfig.url = ajaxConfig.baseUrl + "SaveBranchWardScoping";
+            ajaxConfig.data = JSON.stringify({
+                data: TransactionData,
+                isApprove: isApprove
+            });
+            ajaxConfig.success = function (data) {
+                if (data.Success) {
+
+                    Empower.message("success", data.Message);
+                    UiEvents.functions.ClearFields();
+                    UiEvents.ButtonsModeChange("Default");
+                    //self.mode("");
+                } else {
+                    Empower.message("warning", data.Message);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        BranchWardGrid: function (actionName, control) {
+          
+            const allData = {
+                location: "remote",
+                contentType: "application/json; charset=UTF-8",
+                dataType: "JSON",
+                method: "GET",
+                url: ajaxConfig.baseUrl + methodName(actionName),
+                recIndx: "TranId",
+                beforeSend: function (jqXHR, settings) {
+                    return true;
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    console.error(errorThrown);
+                },
+                getData: function (result) {
+                    if (result && result.Success) {
+                        const data = result.Data;
+                        //{curPage: int, data: [], totalRecords: int}
+                        return { curPage: result.CurrentPage, totalRecords: result.TotalRecords, data: data };
+                    }
+                    else {
+                        Empower.message("Warning", result.Message || "Warning ! - Error Occured...!!!");
+                        return { curPage: 0, totalRecords: 0, data: [] };;
+                    }
+                }
+            };
+            
+            const options = Object.assign({}, pqOptions);
+
+            if (actionName == "UA") {
+                options.colModel = [
+                    { title: "Branch Code", dataIndx: "BranchCode", width: "10%" },
+                    { title: "Branch Name", dataIndx: "BranchName", width: "25%" },
+                    { title: "Effect Date", dataIndx: "EffectDate", width: "10%" },
+                    { title: "Local Body Type", dataIndx: "LocalBodyType", width: "15%", hidden: true },
+                    { title: "Local Body Type", dataIndx: "LocalBodyTypeName", width: "15%" },
+
+                    { title: "Local Body Name", dataIndx: "LocalBodyName", width: "25%" },
+                    {
+                        title: "Action", render: function (ui) {
+                            return `<button type='button' onclick='obj.editRow("${ui.rowData.TranId}",true)'><i class="ic-edit"></i></button> <button type='button' onclick='obj.deleteRow("${ui.rowData.TranId}","UA")'><i class="ic-delete"></i></button>`
+                        }, width: "15%"
+                    },
+
+                ];
+            } else if (actionName == "A") {
+                options.colModel = [
+                    { title: "Branch Code", dataIndx: "BranchCode", width: "10%" },
+                    { title: "Branch Name", dataIndx: "BranchName", width: "25%" },
+                    { title: "Effect Date", dataIndx: "EffectDate", width: "10%" },
+                    { title: "Local Body Type", dataIndx: "LocalBodyType", width: "15%", hidden: true },
+                    { title: "Local Body Type", dataIndx: "LocalBodyTypeName", width: "15%" },
+                    { title: "Local Body Name", dataIndx: "LocalBodyName", width: "25%" },
+                    {
+                        title: "Action", render: function (ui) {
+                            if (ui.rowData.Status == "1") {
+                                return `<button type='button' onclick='obj.editRow("${ui.rowData.TranId}",false)'><i class="ic-visible"></i></button> <button type='button' style="height: 22px;" onclick='obj.deleteRow("${ui.rowData.TranId}","A")'><i class="fas fa-undo"></i></button>`
+                            } else {
+                                return `<button type='button' onclick='obj.editRow("${ui.rowData.TranId}", false)'><i class="ic-visible"></i></button>`;
+                            }
+                        }, width: "15%"
+                    },
+
+                ];
+            }
+            options.dataModel = allData;
+            options.height = 380;
+
+            $(control).pqGrid(options);
+        },
+        functions: {
+            ClearFields: function () {
+                self.Transaction(new models.Transaction());
+                self.Ward(new models.Ward());
+                self.WardList([]);
+                UiEvents.functions.WardSave("WardGrid");
+                $("#tabs").tabs({ active: 0 });
+                $("#tabs").tabs("enable", 1);
+                self.enableTransaction(false);
+                self.enableTransactionWard(false);
+            },
+            WardSave: function (control) {
+                if ($("#" + control).pqGrid("instance")) {
+                    // $("#" + control).pqGrid("destroy");
+                    $("#" + control).pqGrid('option', 'dataModel.data', ko.toJS(self.WardList()));
+                    $("#" + control).pqGrid('refreshDataAndView');
+                } else {
+                    const options = Object.assign({}, pqOptions);
+                    options.colModel = [
+                        { title: "From Ward No", align: "center", dataIndx: "FromWardNo", width: "40%" },
+                        { title: "To Ward No", align: "center", dataIndx: "ToWardNo", width: "40%" },
+                        {
+                            title: "Action", width: "20%", render: function (ui) {
+                                return `<button class="btn btn-danger" onclick="obj.WardDelete(${ui.rowIndx});" type="button"><i class="ic-delete"></i></button>`;
+                            }
+                        }
+                    ];
+
+                    options.dataModel = { data: ko.toJS(self.WardList()) };
+                    options.showBottom = false;
+                    options.width = 580;
+
+                    $("#" + control).pqGrid(options);
+                }
+            }
+        }
+
+    }
+    self.btnAdd = function () {
+        let item = ko.toJS(self.Ward());
+        if (!item.FromWardNo) {
+            Empower.message("Warning", "Warning! - Invalid From Ward No...!!!", $('#fromward'));
+            return;
+        }
+        else if (!item.ToWardNo) {
+            Empower.message("Warning", "Warning! - Invalid To Ward No...!!!", $('#toward'));
+            return;
+        }
+        else {
+            if (!self.Transaction().BranchCode() || !self.Transaction().BranchName()) {
+                Empower.message("Warning", "Warning! - Branch Cannot be empty...!!!", $('#BranchCode'));
+                return;
+
+            }
+            else if (!self.Transaction().EffectDate()) {
+                Empower.message("Warning", "Warning! - Invalid Effect Date...!!!", $('#txtEffectDate'));
+                return;
+
+            }
+            else if (!self.Transaction().LocalBodyType()) {
+                Empower.message("Warning", "Warning! - Invalid Local Body Type...!!!", $('#ddlLocalBodyType'));
+                return;
+
+            }
+            else if (!self.Transaction().LocalBodyCode() || !self.Transaction().LocalBodyName()) {
+                Empower.message("Warning", "Warning! - Invalid Local Body Name...!!!", $('#LocalBodyName'));
+                return;
+
+            }//
+            else if (!($.isNumeric(self.Ward().FromWardNo()))) {
+                Empower.message("Warning", "Warning! - Invalid From Ward No...!!!", $('#fromward'));
+                return;
+            }
+            else if (!($.isNumeric(self.Ward().ToWardNo()))) {
+                Empower.message("Warning", "Warning! - Invalid From Ward No...!!!", $('#toward'));
+                return;
+            }
+            else {
+                var RangeValidationItem = ko.toJS(self.WardList());
+                if (Number(self.Ward().FromWardNo()) > 32 || Number(self.Ward().FromWardNo()) <= 0) {
+                    Empower.message('Warning', 'Warning! - Invalid From ward no...!!!', $('#fromward'));
+                    return;
+                }
+                if (Number(self.Ward().ToWardNo()) > 32 || Number(self.Ward().ToWardNo()) <= 0) {
+                    Empower.message('Warning', 'Warning! - Invalid To ward no...!!!', $('#toward'));
+                    return;
+                }
+                if (Number(self.Ward().FromWardNo()) > Number(self.Ward().ToWardNo())) {
+                    Empower.message('Warning', 'Warning! - Invalid ward no Range...!!!', $('#fromward'));
+                    return;
+                }
+                var IsValidRange = $.grep(RangeValidationItem, function (x) {
+                    ;
+                    return Number(item.FromWardNo) <= Number(x.FromWardNo) && Number(item.ToWardNo) >= Number(x.FromWardNo) && Number(item.ToWardNo) <= Number(x.ToWardNo);
+                });
+                if (IsValidRange && IsValidRange.length > 0) {
+                    Empower.message('Warning', 'Warning! - The entered ward number has already been added...!!!', $('#fromward'));
+                    return;
+                }
+                IsValidRange = $.grep(RangeValidationItem, function (x) {
+                    return Number(item.FromWardNo) >= Number(x.FromWardNo) && Number(item.FromWardNo) <= Number(x.ToWardNo) && Number(item.ToWardNo) >= Number(x.ToWardNo);
+                });
+                if (IsValidRange && IsValidRange.length > 0) {
+                    Empower.message('Warning', 'Warning! - The entered ward number has already been added...!!!', $('#fromward'));
+                    return;
+                }
+                IsValidRange = $.grep(RangeValidationItem, function (x) {
+                    return Number(item.FromWardNo) >= Number(x.FromWardNo) && Number(item.FromWardNo) <= Number(x.ToWardNo) && Number(item.ToWardNo) >= Number(x.FromWardNo) && Number(item.ToWardNo) <= Number(x.ToWardNo)
+                });
+                if (IsValidRange && IsValidRange.length > 0) {
+                    Empower.message('Warning', 'Warning! - The entered ward number has already been added...!!!', $('#fromward'));
+                    return;
+                }
+                IsValidRange = $.grep(RangeValidationItem, function (x) {
+                    return Number(item.FromWardNo) <= Number(x.FromWardNo) && Number(item.ToWardNo) >= Number(x.ToWardNo)
+                });
+                if (IsValidRange && IsValidRange.length > 0) {
+                    Empower.message('Warning', 'Warning! - The entered ward number has already been added...!!!', $('#fromward'));
+                    return;
+                }
+
+                var transactionItem = self.WardList().find(a => a.FromWardNo == item.FromWardNo && a.ToWardNo == item.ToWardNo);// && a.ApplyMode==item.ApplyMode);
+                if (transactionItem) {
+                    Empower.message("Warning", "Warning! - The entered ward number has already been added...!!!", $('#fromward'));
+                    return;
+                }
+                var transactionItem = self.WardList().find(a => a.FromWardNo == item.FromWardNo && a.ToWardNo == item.ToWardNo);// && a.ApplyMode==item.ApplyMode);
+                if (transactionItem) {
+                    // Update Existing Transaction
+                    self.WardList.replace(transactionItem, item);
+                } else {
+                    //New Item Insertion
+                    self.WardList.push(item);
+                    UiEvents.functions.WardSave("WardGrid");
+                }
+                //}
+                self.Ward(new models.Ward);
+            }
+        }
+    };
+    self.WardDelete = function (index) {
+        if (confirm("Are you sure you want to delete this data?")) {
+            self.WardList().splice(index, 1);
+            UiEvents.functions.WardSave("WardGrid");
+        }
+    };
+    self.btnSearchBranch = function () {
+        
+        $("#divSearchBranch").SearchDialog({
+            container: "divSearchBranch",
+            dialogWidth: "600",
+            jTableFields: {
+                BranchCode: {
+                    title: "Branch Code",
+                    width: "35%"
+                },
+                BranchName: {
+                    title: "Branch Name",
+                    width: "65%"
+                }
+            },
+            searchUrl: ajaxConfig.baseUrl + "Searchbranch",
+            callback: propertyCallbackBlock,
+            searchBy: ["BRANCH NAME", "BRANCH CODE"],
+            eventSources: ["#btnSearchBranch"],
+            events: ["click"],
+            autoOpen: true
+        });
+
+        function propertyCallbackBlock(data, mode) {
+            self.Transaction().BranchName(data.BranchName);
+            self.Transaction().BranchCode(data.BranchCode);
+        }
+    };
+    self.btnSearchLocalBody = function () {
+        
+        $("#divSearchLocalBodyName").SearchDialog({
+            container: "divSearchLocalBodyName",
+            dialogWidth: "600",
+            jTableFields: {
+                LocalBodyCode: {
+                    title: "Local Body Code",
+                    width: "35%"
+                },
+                LocalBodyName: {
+                    title: "Local Body Name",
+                    width: "65%"
+                }
+            },
+            searchUrl: ajaxConfig.baseUrl + "SearchLocalBodyName",
+            callback: propertyCallbackBlock,
+            addtionalObject: getAdditionalData,
+            searchBy: ["LOCAL BODY NAME", "LOCAL BODY CODE"],
+            eventSources: ["#btnSearchLocalBody"],
+            events: ["click"],
+            autoOpen: true
+        });
+
+        function propertyCallbackBlock(data, mode) {
+            self.Transaction().LocalBodyName(data.LocalBodyName);
+            self.Transaction().LocalBodyCode(data.LocalBodyCode);
+        }
+        function getAdditionalData() {
+            ;
+            return (self.Transaction().LocalBodyType() === undefined || !self.Transaction().LocalBodyType()) ? "" : self.Transaction().LocalBodyType();
+        }
+    };
+    self.onchangeBranchCode = function () {
+        debugger
+        ajaxConfig.method = "GET";
+        ajaxConfig.url = ajaxConfig.baseUrl + "GetBranch";
+        ajaxConfig.data = {
+            BranchCode: self.Transaction().BranchCode(),
+            isAutoComplete: false
+        };
+        ajaxConfig.success = function (data) {
+            if (data.Message) {
+                Empower.message("Warning", data.Message);
+                return;
+            }
+            if (data.Success && data.Data && data.Data.length > 0) {
+                data = data.Data;
+                self.Transaction().BranchCode(data[0].BranchCode);
+                self.Transaction().BranchName(data[0].BranchName);
+            } else {
+                self.Transaction().BranchCode("");
+                self.Transaction().BranchName("");
+            }
+        }
+        ajaxCall(ajaxConfig);
+    };
+    self.editRow = function (id, mode) {
+        self.Transaction(new models.Transaction);
+        self.Ward(new models.Ward);
+        UiEvents.GetBranchWardScopingById(id);
+        $("#tabs").tabs({ active: 0 });
+        if (mode) {
+
+            if (self.Transaction().Status() == 0) {
+                UiEvents.functions.WardSave("WardGrid");
+                self.enableTransactionWard(true);
+                self.buttonSet.newButton.visible(false);
+                self.buttonSet.cancelButton.visible(true);
+                self.buttonSet.saveButton.visible(true);
+                self.buttonSet.deleteButton.visible(true);
+                self.buttonSet.approveButton.visible(true);
+                //self.buttonSet.queryButton.visible(false);
+                self.buttonSet.exitButton.visible(true);
+            }
+            else {
+                self.enableTransactionWard(false);
+                self.buttonSet.newButton.visible(true);
+                self.buttonSet.cancelButton.visible(false);
+                self.buttonSet.saveButton.visible(false);
+                self.buttonSet.deleteButton.visible(false);
+                self.buttonSet.approveButton.visible(false);
+                //self.buttonSet.queryButton.visible(false);
+                self.buttonSet.exitButton.visible(true);
+            }
+        }
+        else {
+            self.enableTransactionWard(false);
+            UiEvents.functions.WardSave("WardGrid");
+            self.buttonSet.newButton.visible(true);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttonSet.saveButton.visible(false);
+            self.buttonSet.deleteButton.visible(false);
+            self.buttonSet.approveButton.visible(false);
+            //self.buttonSet.queryButton.visible(false);
+            self.buttonSet.exitButton.visible(true);
+        }
+    };
+    self.deleteRow = function (id, action) {
+        Empower.confirm("Confirm To " + ((action == "A") ? "Revert" : "Delete") + "?", function () {
+            UiEvents.DeleteRevert(id, (action == "A") ? false : true);
+            $("#tabs").tabs({ active: 0 });
+        });
+    };
+    self.LocalBodyTypeChange = function () {
+        self.Transaction().LocalBodyName('');
+        self.Transaction().LocalBodyCode('');
+    };
+
+    function Init() {
+        models.UiElements();
+        UiEvents.Buttons();
+        UiEvents.autocomplete();
+        UiEvents.initCall();
+        $("#tabs").tabs();
+        UiEvents.functions.WardSave("WardGrid");
+        UiEvents.tabClickEvent();
+        self.tabs();
+    }
+    Init();
+}
+
+var obj;
+$(document).ready(function () {
+    obj = new IndexVM();
+    ko.applyBindings(obj);
+});
+

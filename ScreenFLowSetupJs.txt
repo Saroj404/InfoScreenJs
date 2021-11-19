@@ -1,0 +1,1197 @@
+const pqOptions = {
+    width: "auto",
+    height: 250,
+    showTitle: false,
+    showHeader: true,
+    showTop: true,
+    showToolbar: false,
+    showBottom: true,
+    wrap: true,
+    hwrap: false,
+    sortable: false,
+    editable: false,
+    resizable: false,
+    collapsible: false,
+    draggable: true, dragColumns: { enabled: false },
+    scrollModel: { autoFit: false },
+    numberCell: { show: true, resizable: true, title: "S.N.", minWidth: 30 },
+    pageModel: { curPage: 1, rPP: 10, type: "remote" },
+    columnTemplate: { wrap: true, editable: false, dataType: "string", halign: "center", hvalign: "center", resizable: true, styleHead: { 'font-weight': "bold" } },
+};
+
+function AuditReportTypeViewModel() {
+    const self = this;
+    isNullOrEmpty = function (str) {
+        if (str === undefined || str === null) {
+            return true;
+        } else if (typeof str === "string") {
+            return (str.trim() === "");
+        } else {
+            return false;
+        }
+    };
+    var methodName = function (str) {
+        if (str === undefined || str === null) {
+            return "";
+        } else if (str.toUpperCase() == "UA") {
+            return "GetUnApprovedList";
+        } else if (str.toUpperCase() == "A") {
+            return "GetApprovedList";
+        }
+    };
+    var isButtonAdded = false;
+    var ajaxConfig = {
+        success: function () { },
+        method: "POST",
+        async: false,
+        baseUrl: "/ScreenActionApprovalSetup/",
+        url: "",
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        data: "",
+        beforeSend: function () { Empower.progressStart(); },
+        complete: function () { Empower.progressEnd(); },
+        error: function (data) {
+
+        }
+    },//eof the ajax path
+        ajaxCall = function (config) {
+            
+            $.ajax({
+                method: config.method,
+                async: config.async,
+                url: config.url,
+                contentType: config.contentType,
+                dataType: config.dataType,
+                data: config.data,
+                success: function (data) {
+                    ajaxConfig.success(data);
+                },
+
+                error: function (error) {
+                    ajaxConfig.error(error);
+                }
+            });
+        },
+        models = {
+            ScreenSelect: function (item) {
+                item = item || {};
+                this.ScreenCode = ko.observable(item.ScreenCode||'');
+                this.ScreenName = ko.observable(item.ScreenName || '');
+                this.MenuCode = ko.observable(item.MenuCode||'');
+                this.IsCurrent = ko.observable(item.IsCurrent || true);
+                this.IsRemove = ko.observable(item.IsRemove || false);
+            },
+            Master: function (item) {
+                item = item || {};
+                this.BranchCategoryValue = ko.observable(item.BranchCategoryValue || '');
+                this.BranchCategoryValue.subscribe((x) => {
+                    if (x) {
+                        let currentLevel = self.BranchCategoryList().find(Y => Y.BranchCategoryValue == x).BranchCategoryLevel;
+                        self.BranchCategoryListFiltered([]);
+                        self.BranchCategoryListFiltered(ko.toJS(obj.BranchCategoryList).filter(P => P.BranchCategoryLevel <= currentLevel));
+                    }
+                    else {
+                        self.BranchCategoryListFiltered([]);
+                    }
+                });
+                this.CurrentEffectDate = ko.observable(item.CurrentEffectDate || "");
+                this.NewEffectDate = ko.observable(item.NewEffectDate || "");
+                this.TranId = ko.observable(item.TranId || "");
+                this.Status = ko.observable(item.Status || 0);
+                this.TodayDate = ko.observable(item.TodayDate || "");
+            },
+            ActionSelect: function (item) {
+                item = item || {};
+                this.ActionValue = ko.observable(item.ActionValue || '');
+                this.ActionName = ko.observable(item.ActionName || "");
+                this.Id = ko.observable(item.Id || "");
+                this.actionapprovallevelJsondata = ko.observable(item.actionapprovallevelJsondata || "");
+               //this.actionapprovallevelList = ko.observableArray((item.actionapprovallevelList || []).map(item => ko.toJS(new models.ActionApprovalLevel(item))));
+                this.actionapprovallevelList = ko.observableArray(item.actionapprovallevelList || []);
+            },
+            ActionApprovalLevel: function (item) {
+                item = item || {};
+                this.Id = ko.observable(item.Id || "");
+                this.MastId = ko.observable(item.MastId || "");
+                this.ActionValue = ko.observable(item.ActionValue || "");
+                this.ActionName = ko.observable(item.ActionName || "");
+                this.Level = ko.observable(item.Level || "");
+                this.RoleCode = ko.observable(item.RoleCode || "");
+                this.RoleName = ko.observable(item.RoleName || "");
+                this.BranchCategoryValue = ko.observable(item.BranchCategoryValue || "");
+                this.BranchCategoryName = ko.observable(item.BranchCategoryName || "");
+
+            },
+            UiElements : function () {
+                self.lblText = ko.observable();
+                self.ScreenSelect = ko.observable(new models.ScreenSelect());
+                self.Master = ko.observable(new models.Master());
+                self.ActionApprovalLevel = ko.observable(new models.ActionApprovalLevel());
+                self.ActionSelect = ko.observable(new models.ActionSelect());
+                self.HasRightsForApproval = ko.observable();
+                self.BranchCategoryList = ko.observableArray([]);
+                self.HasRightsForDelete = ko.observable();
+                self.enableMaster = ko.observable(false);
+                self.NewSettingActionValue = ko.observable();
+                self.NewSettingActionApprovalLevelList = ko.observableArray([]);
+                self.BranchCategoryListFiltered = ko.observableArray([]);
+                self.ViewHistoryEffectDateList = ko.observableArray([]);
+                self.ViewHistoryScreenSelectionList = ko.observableArray([]);
+                self.ViewHistoryActionList = ko.observableArray([]);
+                self.ViewHistoryActionApprovalLevelList = ko.observableArray([]);
+                self.ScreenList = ko.observableArray([]);
+                self.ActionList = ko.observableArray([]);
+                self.selectedDate = ko.observable('');
+                self.RevertId = ko.observable('');
+                self.HdnIndex = ko.observable();
+                self.enablebtnRevert = ko.observable(false);
+                self.ddlActionList = ko.observableArray([{ Text: 'Open', Id: '1' }, { Text: 'Edit', Id: '2' }, { Text: 'Delete', Id: '3' }, { Text: 'Print', Id: '5' }]);
+            },
+        }
+
+    UiEvents = {
+        Buttons: function () {
+            var actions = {
+                newClick: function () { UiEvents.ButtonsModeChange("new"); },
+                cancelClick: function () { UiEvents.ButtonsModeChange("cancel"); },
+                saveClick: function () { UiEvents.ButtonsModeChange("save"); }
+            };
+            self.buttonSet = new buttons(actions);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttons = ko.observableArray([
+                self.buttonSet.newButton,
+                self.buttonSet.cancelButton,
+                self.buttonSet.saveButton,
+                self.buttonSet.exitButton
+            ]);
+            self.buttonSet.newButton.visible(true);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttonSet.saveButton.visible(false);
+            self.buttonSet.exitButton.visible(true);
+        },
+        ButtonsModeChange: function (mode) {
+            switch (mode) {
+                case 'new':
+                    self.enableMaster(true);
+                    self.buttonSet.newButton.visible(false);
+                    self.buttonSet.cancelButton.visible(true);
+                    self.buttonSet.saveButton.visible(true);
+                    self.buttonSet.exitButton.visible(true);
+                    //UiEvents.Functions.ClearFields();
+                    UiEvents.focus("ddlBranchCategory");
+                    UiEvents.Date();
+                    break;
+                case 'cancel':
+                    self.lblText('');
+                    self.enableMaster(false);
+                    self.buttonSet.newButton.visible(true);
+                    self.buttonSet.cancelButton.visible(false);
+                    self.buttonSet.saveButton.visible(false);
+                    self.buttonSet.exitButton.visible(true);
+                    UiEvents.clear.ClearFields();
+                    UiEvents.clear.ClearGrid();
+                    break;
+                case 'save':
+                    const msg = UiEvents.SaveValidate();
+                    
+                    if (msg) {
+                        Empower.message("WARNING", msg);
+                        $("#tabs-1").tabs({ active: 0 });
+                        return;
+                    }
+                    UiEvents.SaveProcess(true);
+                    self.buttonSet.newButton.visible(true);
+                    self.buttonSet.cancelButton.visible(false);
+                    self.buttonSet.saveButton.visible(false);
+                    break;
+                default:
+            }
+        },
+        focus: function (id) {
+            document.getElementById(id).focus();
+        },
+        Date: function () {
+            ;
+            if (new EmpCommon().oprDateType == "AD") {
+                self.Master().NewEffectDate(new EmpCommon().dayEndDate);
+                self.Master().CurrentEffectDate(new EmpCommon().dayEndDate);
+                self.Master().TodayDate(new EmpCommon().dayEndDate);
+            } else {
+                self.Master().NewEffectDate(new EmpCommon().dayEndMiti);
+                self.Master().CurrentEffectDate(new EmpCommon().dayEndMiti);
+                self.Master().TodayDate(new EmpCommon().dayEndMiti);
+            }
+            DateValidate();
+        },
+        GetEffectDateList: function () {
+            self.ViewHistoryEffectDateList([]);
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + "GetEffectDateList";
+            ajaxConfig.data = {
+                BranchCategoryValue: self.Master().BranchCategoryValue()
+            };
+            ajaxConfig.success = function (data) {
+                if (data.Message) {
+                    Empower.message("Warning", data.Message);
+                    return;
+                }
+                if (data.Success) {
+                    data = data.Data;
+                    self.ViewHistoryEffectDateList(data);
+
+                } else {
+                    self.ViewHistoryEffectDateList([]);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        onchange: function () {
+            
+            self.onchangeScreenCode = function () {
+                
+                ajaxConfig.method = "GET";
+                ajaxConfig.url = ajaxConfig.baseUrl + "GetScreen";
+                ajaxConfig.data = {
+                    ScreenCode: self.ScreenSelect().ScreenCode(),
+                    isAutoComplete: false,
+                    CategoryCode: self.Master().BranchCategoryValue(),
+                    EffectDate: self.Master().NewEffectDate(),
+                };
+                ajaxConfig.success = function (data) {
+                    if (data.Message) {
+                        Empower.message("Warning", data.Message);
+                        self.ScreenSelect().ScreenCode("");
+                        self.ScreenSelect().ScreenName("");
+                        self.ScreenSelect().MenuCode("");
+                        return;
+                    }
+                    if (data.Success && data.Data && data.Data.length > 0) {
+                        
+                        data = data.Data;
+                        self.ScreenSelect().MenuCode(data[0].MenuCode);
+                        self.ScreenSelect().ScreenCode(data[0].ScreenCode);
+                        self.ScreenSelect().ScreenName(data[0].ScreenName);
+                    } else {
+                        self.ScreenSelect().ScreenCode("");
+                        self.ScreenSelect().ScreenName("");
+                        self.ScreenSelect().MenuCode("");
+                    }
+                }
+                ajaxCall(ajaxConfig);
+            };
+           
+            self.onchangeBranchCategory = function () {
+                self.selectedDate('');
+                self.RevertId('');
+                self.Master().TranId(0);
+                UiEvents.Date();
+                self.enablebtnRevert(false);
+                let tmp_btn = `<button style="height: 30px; margin-bottom: 4px; width:100%; border-radius: 7.5px;color:white;" type="button" class="emp-btn  pull-right" title="Delete" disabled="disabled">Delete Setting</button>`;
+                $("#DeleteRec").html(tmp_btn);
+                $("#more-tabs, #Screen").click(function () {
+                    UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+                });
+                $("#tabs, #NewSetting").click(function () {
+                    UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+                });
+                self.ScreenList([]);
+                UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+                self.ActionList([]);
+                UiEvents.Functions.ActionGrid("ActionGrid");
+                //$('#ActionGrid').pqGrid('refreshDataAndView');
+                self.ViewHistoryEffectDateList([]);
+                self.ViewHistoryScreenSelectionList([]);
+                UiEvents.Functions.ViewScreenHistoryGrid("ViewHistoryScreenSelectionGrid");
+                self.ViewHistoryActionList([]);
+                UiEvents.Functions.ViewActionHistoryGrid("ViewHistoryActionOptionGrid");
+                self.ViewHistoryActionApprovalLevelList([]);
+                UiEvents.Functions.ViewApprovalLevelGrid("ViewHistoryActionApprovalLevelGrid");
+                UiEvents.GetEffectDateList();
+                UiEvents.Functions.EffectDateGrid("ViewHistoryEffectDateGrid");
+             
+            }
+        },
+        autocomplete: function () {
+            
+            $("#ScreenName").EmpowerAutoComplete({
+                Url: ajaxConfig.baseUrl + "GetScreen",
+                dataJson: function (request) {
+                    return {
+                        "ScreenCode": request.term,
+                        "isAutocomplete": true,
+                        "CategoryCode": self.Master().BranchCategoryValue(),
+                        "EffectDate": self.Master().NewEffectDate()
+                    }
+                },
+                labelProperty: "ScreenName",
+                valueProperty: "ScreenCode",
+                onDataEmpty: function () {
+                    self.ScreenSelect().ScreenCode("");
+                    self.ScreenSelect().ScreenName("");
+                    self.ScreenSelect().MenuCode("");
+                },
+                showValue: false,
+
+                select: function (event, ui) {
+                    self.ScreenSelect().ScreenName(ui.label);
+                    self.ScreenSelect().ScreenCode(ui.value);
+
+                    self.ScreenSelect().MenuCode(ui.data.MenuCode);
+                },
+                error: function (xhr, status, error) {
+                }
+            });
+            $("#txtRoleName").EmpowerAutoComplete({
+                Url: ajaxConfig.baseUrl + "GetRole",
+                dataJson: function (request) {
+                    return {
+                        "Role": request.term,
+                        "isAutocomplete": true
+                    }
+                },
+                labelProperty: "RoleName",
+                valueProperty: "RoleCode",
+                onDataEmpty: function () {
+                    self.ActionApprovalLevel().RoleCode("");
+                    self.ActionApprovalLevel().RoleName("");
+                },
+                showValue: false,
+
+                select: function (event, ui) {
+                    self.ActionApprovalLevel().RoleName(ui.label);
+                    self.ActionApprovalLevel().RoleCode(ui.value);
+                },
+                error: function (xhr, status, error) {
+                }
+            });
+           
+
+        },
+        dialog: function () {
+            $('#popUpActionApprovalLevel').dialog({
+                open: function () {
+                    $("#NewActionApprovalLevelGrid").pqGrid("refresh");
+                },
+                title: "Approval Role Level",
+                autoOpen: false,
+                resizable: false,
+                width: 700,
+                height: 400,
+                modal: true,
+                buttons: [{
+                    text: "Submit",
+                    click: function () {
+                        debugger
+                        if (self.NewSettingActionApprovalLevelList().length < 1) {
+                            Empower.message("Warning", "Warning! - Approval Role Level not been added...!!!", $("#txtRoleName"));
+                            UiEvents.focus("txtRoleName");
+                            return;
+                        }
+                        let rowIndex = 0;
+                        if (isButtonAdded) {
+                            rowIndex = $('#ActionGrid').pqGrid('option', 'dataModel.data').length - 1;
+                        } else {
+                            rowIndex = self.ActionSelect().Id();
+                        }
+
+                        let gridData = $('#ActionGrid').pqGrid('option', 'dataModel.data');
+                        $.each(gridData, (i, v) => {
+                            if (v.pq_ri == Number(rowIndex)) {
+                                gridData[i].actionapprovallevelList = self.NewSettingActionApprovalLevelList();
+                            }
+                        });
+
+                        self.ActionList([]);
+                        self.ActionList(gridData);
+                        UiEvents.Functions.ActionGrid("ActionGrid");
+                        isButtonAdded = false;
+                        $(this).dialog("close");
+                        UiEvents.focus("ddlAction");
+                    }
+                }]
+            });
+        },
+        GetBranchCategory: function () {
+            
+            self.BranchCategoryList([]);
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + "GetBranchCategory";
+            ajaxConfig.data = {};
+            ajaxConfig.success = function (data) {
+                if (data.Message) {
+                    Empower.message("Warning", data.Message);
+                    return;
+                }
+                if (data.Success) {
+                    
+                    data = data.Data;
+                    self.BranchCategoryList(data);
+
+                } else {
+                    self.BranchCategoryList([]);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        Search: function ()
+        {
+            self.btnSearchScreen = function () {
+                
+                $("#divSearchScreen").SearchDialog({
+                    container: "divSearchScreen",
+                    dialogWidth: "600",
+                    jTableFields: {
+                        ScreenCode: {
+                            title: "Screen Code",
+                            width: "35%"
+                        },
+                        ScreenName: {
+                            title: "Screen Name",
+                            width: "65%"
+                        }
+                    },
+                    searchUrl: ajaxConfig.baseUrl + "SearchScreen",
+                    addtionalObject: getAdditionalData,
+                    callback: propertyCallbackBlock,
+                    searchBy: ["SCREEN NAME", "SCREEN CODE"],
+                    eventSources: ["#btnSearchScreen"],
+                    events: ["click"],
+                    autoOpen: true
+                });
+
+                function propertyCallbackBlock(data, mode) {
+                    self.ScreenSelect().MenuCode(data.MenuCode);
+                    self.ScreenSelect().ScreenCode(data.ScreenCode);
+                    self.ScreenSelect().ScreenName(data.ScreenName);
+                }
+
+                function getAdditionalData() {
+                    return {
+                        CategoryCode: self.Master().BranchCategoryValue(),
+                        EffectDate: self.Master().NewEffectDate(),
+                    }
+                }
+
+            };
+            self.btnSearchRole = function () {
+                $("#divSearchRole").SearchDialog({
+                    container: "divSearchRole",
+                    dialogWidth: "600",
+                    jTableFields: {
+                        RoleCode: {
+                            title: "Role Code",
+                            width: "35%"
+                        },
+                        RoleName: {
+                            title: "Role Name",
+                            width: "65%"
+                        }
+                    },
+                    searchUrl: ajaxConfig.baseUrl + "SearchRole",
+                    callback: propertyCallbackBlock,
+                    searchBy: ["ROLE NAME", "ROLE CODE"],
+                    eventSources: ["#btnSearchRole"],
+                    events: ["click"],
+                    autoOpen: true
+                });
+
+                function propertyCallbackBlock(data, mode) {
+                    self.ActionApprovalLevel().RoleCode(data.RoleCode);
+                    self.ActionApprovalLevel().RoleName(data.RoleName);
+                }
+            };
+
+        },
+        GetScreenList: function (ui, status) {
+            
+            if (status == 1) {
+                self.ViewHistoryScreenSelectionList([]);
+            }
+            else {
+                self.ScreenList([]);
+            }
+
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + "GetScreenList";
+            ajaxConfig.data = {
+                MastId: ui,
+                Status: status
+            };
+            ajaxConfig.success = function (data) {
+                if (data.Message) {
+                    Empower.message("Warning", data.Message);
+                    return;
+                }
+                if (data.Success) {
+                    data = data.Data;
+                    if (status == 1) {
+                        self.ViewHistoryScreenSelectionList(data);
+                    }
+                    else {
+                        self.NewSettingScreenSelectionList(data);
+                    }
+
+                } else {
+                    if (status == 1) {
+                        self.ViewHistoryScreenSelectionList([]);
+                    }
+                    else {
+                        self.NewSettingScreenSelectionList([]);
+                    }
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        GetViewHistoryAction: function (id) {
+            
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + "GetViewHistoryAction";
+            ajaxConfig.data = {
+                MastId: id
+            };
+            ajaxConfig.success = function (data) {
+                if (data.Message) {
+                    Empower.message("Warning", data.Message);
+                    return;
+                }
+                if (data.Success) {
+                    data = data.Data;
+                    //self.ViewHistoryActionApprovalLevelList(data);
+                    self.ViewHistoryActionList(data);
+
+                } else {
+                    //self.ViewHistoryActionApprovalLevelList([]);
+                    self.ViewHistoryActionList([]);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        GetViewHistoryActionRoleLevel: function (MastId, ActionOption) {
+            
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + "GetViewHistoryActionRoleLevel";
+            ajaxConfig.data = {
+                MastId: MastId,
+                ActionOption: ActionOption
+            };
+            ajaxConfig.success = function (data) {
+                if (data.Message) {
+                    Empower.message("Warning", data.Message);
+                    return;
+                }
+                if (data.Success) {
+                    data = data.Data;
+                    self.ViewHistoryActionApprovalLevelList(data);
+
+                } else {
+                    self.ViewHistoryActionApprovalLevelList([]);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        Validate: {
+            ScreenValidation : function () {
+                
+                let item = ko.toJS(self.ScreenSelect());
+                if (!self.Master().BranchCategoryValue()) {
+                    Empower.message("Warning", "Warning ! - Branch category Cannot be empty...!!!", $('#ddlBranchCategory'));
+                    return;
+                }
+                else if (!self.Master().NewEffectDate()) {
+                    Empower.message("Warning", "Warning ! - Effect date cannot be empty...!!!", $('#txtNewEffectDate'));
+                    return;
+                }
+
+                else if (!item.ScreenCode || !item.MenuCode || !item.ScreenName) {
+                    Empower.message("Warning", "Warning ! - Invalid Screen Name...!!!", $('#ScreenCode'));
+                    return;
+                }
+                else if (self.ScreenList().find(x => x.ScreenCode == item.ScreenCode)) {
+                    Empower.message("Warning", "Warning ! - Screen already exists in list...!!!", $('#ScreenCode'));
+                    return;
+                }
+                else {
+                    item.IsCurrent = false;
+                    item.IsRemove = false;
+                    self.ScreenList.push(item);
+                    UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+                    self.ScreenSelect().MenuCode("");
+                    self.ScreenSelect().ScreenCode("");
+                    self.ScreenSelect().ScreenName("");
+                    UiEvents.focus("ScreenCode");
+                    return;
+                }
+                
+            },
+            ActionValidation: function () {
+                let item = ko.toJS(self.ActionSelect());
+                if (!self.Master().BranchCategoryValue()) {
+                    Empower.message("Warning", "Warning ! - Branch category Cannot be empty...!!!", $('#ddlBranchCategory'));
+                    return;
+                }
+                if (!self.Master().NewEffectDate()) {
+                    Empower.message("Warning", "Warning ! - Effect date cannot be empty...!!!", $('#txtNewEffectDate'));
+                    return;
+                }
+                else {
+                    if (Number(item.ActionValue) <= 0 || item.ActionValue == undefined) {
+                        Empower.message("Warning", "Warning ! - Invalid Action...!!!", $('#ddlAction'));
+                        return;
+                    }
+                    if (self.ActionList().find(x => x.ActionValue == item.ActionValue)) {
+                        Empower.message("Warning", "Warning ! - Action already exists in action list...!!!", $('#ddlAction'));
+                        return;
+                    }
+                    var transactionItem = self.ActionList().find(x => x.ActionValue == item.ActionValue);
+                    self.NewSettingActionValue(0);
+                    ////New Item Insertion
+
+                    //item.IsCurrent = false;
+                    //item.IsRemove = false;
+                    item.ActionName = $("#ddlAction option:selected").text();
+                    self.NewSettingActionValue($("#ddlAction option:selected").val());
+                    
+                    self.ActionList.push(item);
+                    UiEvents.Functions.ActionGrid("ActionGrid");
+
+                    self.ActionSelect().Id(self.ActionList().length);
+
+                    self.NewSettingActionApprovalLevelList([]);
+                    isButtonAdded = true;
+                    UiEvents.Functions.ActionApprovalGrid("NewActionApprovalLevelGrid");
+                    $("#popUpActionApprovalLevel").dialog('open');
+                    self.ActionSelect().ActionValue("");
+                    UiEvents.focus("ddlApprovalBranchCategory");
+                }
+            },
+        },
+        SaveValidate: function () {
+            var msg = "";
+            var master = ko.toJS(self.Master());
+
+            if (!master.BranchCategoryValue) {
+                msg = "Warning - ! Branch category is not defined ...!!!";
+                UiEvents.focus("ddlBranchCategory");
+                return msg;
+            } else if (!master.NewEffectDate) {
+                msg = "Warning - ! New effect date is not defined ...!!!";
+                UiEvents.focus("txtNewEffectDate");
+                return msg;
+            }
+            else if (master.NewEffectDate < self.Master().TodayDate()) {
+                msg = "Warning - ! Effect date cannot be less than tranaction date...!!!";
+                UiEvents.focus("txtNewEffectDate");
+                return msg;
+            }
+            else if (self.ScreenList().length < 1) {
+                msg = "Warning - ! New  screen list is not defined ...!!!";
+                UiEvents.focus("ScreenCode");
+                return msg;
+            }
+            else if (self.ActionList().length < 1) {
+                msg = "Warning - ! New  action list is not defined ...!!!"
+                UiEvents.focus("ddlAction");
+                return msg;
+            }
+            else if (self.NewSettingActionApprovalLevelList().length < 1) {
+                msg = "Warning - ! New  action role list is not defined ...!!!"
+                UiEvents.focus("txtRoleName");
+                return msg;
+            }
+            return msg;
+        },
+        SaveProcess: function (isApprove) {
+            
+            const MasterData = ko.toJS(self.Master());
+            if (self.ScreenList().filter(x => x.IsRemove == false).length < 1) {
+                Empower.message("WARNING", "Warning !- Invalid Screen lists...!!!");
+                return;
+            }
+            var ScreenList = self.ScreenList().filter(x => x.IsRemove == false).map(x => x.MenuCode);
+            ScreenList = ScreenList.join(',');
+
+            //var NewSettingActionLists = self.NewSettingActionList().map(x => x.actionapprovallevelList);
+
+            ajaxConfig.method = "POST";
+            ajaxConfig.url = ajaxConfig.baseUrl + "SaveScreenApprovalFlowSetup";
+            ajaxConfig.data = JSON.stringify({
+                data: MasterData,
+                newScreenList: ScreenList,
+                NewSettingActionList: ko.toJS(self.ActionList()),
+                isApprove: isApprove,
+            });
+            ajaxConfig.success = function (data) {
+                if (data.Success) {
+                    Empower.message("success", data.Message);
+                    //$('#CurrentGrid').pqGrid("refreshDataAndView");
+                    UiEvents.clear.ClearFields();
+                    UiEvents.clear.ClearGrid();
+                    //UiEvents.buttonsModeChange("Default");
+                    self.mode("");
+                } else {
+                    Empower.message("warning", data.Message);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        clear: {
+            ClearFields: function () {
+                //self.mode("");
+                self.RevertId('');
+                self.selectedDate('');
+                self.ActionSelect(new models.ActionSelect());
+                self.ActionApprovalLevel(new models.ActionApprovalLevel());
+                self.Master(new models.Master());
+                self.ScreenSelect(new models.ScreenSelect());
+                self.ActionList([]);
+                self.ScreenList([]);
+                $("#tabs").tabs({ active: 0 });
+                $("#tabs").tabs("enable", 1);
+                $("#more-tabs").tabs({ active: 0 });
+                UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+
+            },
+            ClearGrid: function () {
+                self.ScreenList([]);
+                self.ActionList([]);
+                self.NewSettingActionApprovalLevelList([]);
+
+                self.ViewHistoryEffectDateList([]);
+                self.ViewHistoryScreenSelectionList([]);
+                self.ViewHistoryActionList([]);
+                self.ViewHistoryActionApprovalLevelList([]);
+
+                UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+                UiEvents.Functions.ActionGrid("ActionGrid");
+                UiEvents.Functions.ViewScreenHistoryGrid("ViewHistoryScreenSelectionGrid");
+                UiEvents.Functions.ViewActionHistoryGrid("ViewHistoryActionOptionGrid");
+                UiEvents.Functions.EffectDateGrid("ViewHistoryEffectDateGrid");
+                UiEvents.Functions.ViewApprovalLevelGrid("ViewHistoryActionApprovalLevelGrid");
+            }
+        },
+        Functions: {
+            ScreenSelectGrid: function (control) {
+                if ($("#" + control).pqGrid("instance")) {
+                    // $("#" + control).pqGrid("destroy");
+                    $("#" + control).pqGrid('option', 'dataModel.data', ko.toJS(self.ScreenList()));
+                    $("#" + control).pqGrid('refreshDataAndView');
+                } else {
+                    const options = Object.assign({}, pqOptions);
+                    options.colModel = [
+                        { title: "Screen Code", align: "center", dataIndx: "ScreenCode", width: "20%" },
+                        { title: "Screen Name", align: "center", dataIndx: "ScreenName", width: "60%" },
+                        {
+                            title: "Action", width: "20%", render: function (ui) {
+                                return `<button class="btn btn-danger" onclick="obj.ScreenDelete(${ui.rowIndx});" style="margin-left:25px;" type="button"><i class="ic-delete"></i></button>`;
+                            }
+                        }
+                    ];
+
+                    options.dataModel = { data: ko.toJS(self.ScreenList()) };
+                    options.showBottom = false;
+                    options.width = 580;
+
+                    $("#" + control).pqGrid(options);
+                }
+            },
+            ActionApprovalGrid: function (control) {
+                if ($("#" + control).pqGrid("instance")) {
+                    // $("#" + control).pqGrid("destroy");
+                    $("#" + control).pqGrid('option', 'dataModel.data', ko.toJS(self.NewSettingActionApprovalLevelList()));
+                    $("#" + control).pqGrid('refreshDataAndView');
+                } else {
+                    const options = Object.assign({}, pqOptions);
+                    options.colModel = [
+                        { title: "Level", dataIndx: "Level", width: "15%", align: "left", align: "center" },
+                        { title: "Approval Office", dataIndx: "BranchCategoryValue", width: "32%", align: "left", hidden: true },
+                        { title: "Approval Office", dataIndx: "BranchCategoryName", width: "32%", align: "left" },
+                        { title: "Role", dataIndx: "RoleCode", width: "60%", align: "left", hidden: true },
+                        { title: "Role", dataIndx: "RoleName", width: "33%", align: "left" },
+                        {
+                            title: "Action", align: "center", render: function (ui) {
+                                return `<button title='Remove' type='button' onclick='obj.removeApprovalLevel("${ui.rowIndx}")'><i class="ic-delete"></i></button>`
+                            }, width: "17%"
+                        }
+                    ];
+
+                    options.dataModel = { data: ko.toJS(self.NewSettingActionApprovalLevelList()) };
+                    options.showBottom = false;
+                    options.width = 680;
+
+                    $("#" + control).pqGrid(options);
+                }
+            },
+            ClearFields: function () {
+                self.ActionSelect(new models.ActionSelect());
+                self.ActionApprovalLevel(new models.ActionApprovalLevel());
+                self.ScreenSelect(new models.ScreenSelect());
+                self.ActionList([]);
+                self.ScreenList([]);
+                UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+                $("#tabs").tabs({ active: 0 });
+                $("#tabs").tabs("enable", 1);
+            },
+            ActionGrid: function (control) {
+                if ($("#" + control).pqGrid("instance")) {
+                    //$("#" + control).pqGrid("destroy");
+                    $("#" + control).pqGrid('option', 'dataModel.data', ko.toJS(self.ActionList()));
+                    $("#" + control).pqGrid('refreshDataAndView');
+                } else {
+                    const options = Object.assign({}, pqOptions);
+                    options.colModel = [
+                        { title: "Actions", align: "center", dataIndx: "ActionName", width: "55%" },
+                        {
+                            title: "Action", width: "45%", render: function (ui) {
+                                return `<button style="margin-left:30px;" title='View' type='button' onclick='obj.EditViewLevelApproval("${ui.rowIndx}","${ui.rowData.ActionValue}")'><i class="ic-visible"></i></button> <button title='Remove' type='button' onclick='obj.removeAction("${ui.rowIndx}")'><i class="ic-delete"></i></button>`
+                            }
+                        }
+                    ];
+
+                    options.dataModel = { data: ko.toJS(self.ActionList()) };
+                    options.showBottom = false;
+                    options.width = 350;
+
+                    $("#" + control).pqGrid(options);
+                }
+            },
+            EffectDateGrid: function (control) { // FOR NEW SETTING TAB AND ACTION OPTION TAB CLICK ON POPUP DIALOG
+                if ($("#" + control).pqGrid("instance")) {
+                    //$("#" + control).pqGrid("destroy");
+                    $("#" + control).pqGrid('option', 'dataModel.data', ko.toJS(self.ViewHistoryEffectDateList()));
+                    $("#" + control).pqGrid('refreshDataAndView');
+                }
+
+                const options = Object.assign({}, pqOptions);
+                options.colModel = [
+                    { title: "Effect Date", dataIndx: "EffectDate", width: "68%", align: "left", align: "center" },
+                    { title: "TranId", dataIndx: "TranId", width: "32%", align: "left", hidden: true },
+                    {
+                        title: "Action", width: "7%", render: function (ui) {
+                            return `<button title='View' type='button' onclick='obj.ViewEffectDate("${ui.rowIndx}","${ui.rowData.TranId}","${ui.rowData.EffectDate}")'><i class="ic-visible"></i></button> `
+                        }
+                    }
+                ];
+                options.dataModel = { data: ko.toJS(self.ViewHistoryEffectDateList()) };
+                
+                options.height = 352;
+                options.showBottom = false;
+                $("#" + control).pqGrid(options);
+
+            },
+            ViewScreenHistoryGrid: function (control) {
+                if ($("#" + control).pqGrid("instance")) {
+                    // $("#" + control).pqGrid("destroy");
+                    $("#" + control).pqGrid('option', 'dataModel.data', ko.toJS(self.ViewHistoryScreenSelectionList()));
+                    $("#" + control).pqGrid('refreshDataAndView');
+                } else {
+                    const options = Object.assign({}, pqOptions);
+                    options.colModel = [
+                        { title: "Screen Code", align: "center", dataIndx: "ScreenCode", width: "30%" },
+                        { title: "Screen Name", align: "center", dataIndx: "ScreenName", width: "70%" },
+                    ];
+
+                    options.dataModel = { data: ko.toJS(self.ViewHistoryScreenSelectionList()) };
+                    options.showBottom = false;
+                    options.height = 310;
+
+                    $("#" + control).pqGrid(options);
+                }
+            },
+            ViewActionHistoryGrid: function (control) {
+                if ($("#" + control).pqGrid("instance")) {
+                    // $("#" + control).pqGrid("destroy");
+                    $("#" + control).pqGrid('option', 'dataModel.data', ko.toJS(self.ViewHistoryActionList()));
+                    $("#" + control).pqGrid('refreshDataAndView');
+                } else {
+                    const options = Object.assign({}, pqOptions);
+                    options.colModel = [
+                        { title: "Actions", align: "center", dataIndx: "ActionName", width: "80%" },
+                        {
+                            title: "Action", width: "20%", render: function (ui) {
+                                return `<button title='View' type='button' onclick='obj.ViewActionLevel("${ui.rowData.MastId}","${ui.rowData.ActionValue}")'><i class="ic-visible"></i></button>`
+                            }
+                        }
+                    ];
+
+                    options.dataModel = { data: ko.toJS(self.ViewHistoryActionList()) };
+                    options.showBottom = false;
+                    options.height = 170;
+
+                    $("#" + control).pqGrid(options);
+                }
+            },
+            ViewApprovalLevelGrid: function (control) {
+                if ($("#" + control).pqGrid("instance")) {
+                    // $("#" + control).pqGrid("destroy");
+                    $("#" + control).pqGrid('option', 'dataModel.data', ko.toJS(self.ViewHistoryActionApprovalLevelList()));
+                    $("#" + control).pqGrid('refreshDataAndView');
+                } else {
+                    const options = Object.assign({}, pqOptions);
+                    options.colModel = [
+                        { title: "Level", dataIndx: "Level", width: "20%", align: "left", align: "center" },
+                        { title: "Approval Office", dataIndx: "BranchCategoryValue", width: "32%", align: "left", hidden: true },
+                        { title: "Approval Office", dataIndx: "BranchCategoryName", width: "40%", align: "left" },
+                        { title: "Role", dataIndx: "RoleCode", width: "60%", align: "left", hidden: true },
+                        { title: "Role", dataIndx: "RoleName", width: "40%", align: "left" },
+                    ];
+
+                    options.dataModel = { data: ko.toJS(self.ViewHistoryActionApprovalLevelList()) };
+                    options.showBottom = false;
+                    options.height = 180;
+
+                    $("#" + control).pqGrid(options);
+                }
+            }
+        }
+    };
+
+    self.btnAddScreen = function () {
+        if (UiEvents.Validate.ScreenValidation()) {
+            
+            UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+        }
+    };
+    self.ScreenDelete = function (index) {
+        if (confirm("Are you sure you want to delete this data?")) {
+            self.ScreenList.splice(index, 1);
+            UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+        }
+    };
+    self.btnCancel = function () {
+        self.ScreenSelect().MenuCode("");
+        self.ScreenSelect().ScreenCode("");
+        self.ScreenSelect().ScreenName("");
+        UiEvents.focus("ScreenCode");
+    };
+    self.btnCancelNewAction = function () {
+        self.ActionSelect().ActionValue("");
+    };
+    self.removeApprovalLevel = function (index) {
+        self.NewSettingActionApprovalLevelList.splice(index, 1);
+        let resultList = [];
+        let existingList = ko.toJS(self.NewSettingActionApprovalLevelList());
+
+        if (existingList.length > 0) {
+            for (var i = 0; i < existingList.length; i++) {
+                let data = {
+                    "ActionName": existingList[i].ActionName,
+                    "ActionValue": existingList[i].ActionValue,
+                    "BranchCategoryName": existingList[i].BranchCategoryName,
+                    "BranchCategoryValue": existingList[i].BranchCategoryValue,
+                    "Id": existingList[i].Id,
+                    "Level": i + 1,
+                    "MastId": existingList[i].MastId,
+                    "RoleCode": existingList[i].RoleCode,
+                    "RoleName": existingList[i].RoleName
+                };
+                resultList.push(data);
+            }
+        }
+        self.NewSettingActionApprovalLevelList(ko.toJS(resultList));
+        UiEvents.Functions.ActionApprovalGrid("NewActionApprovalLevelGrid");
+    }
+    self.btnAddAction = function () {
+        if (UiEvents.Validate.ActionValidation()) {
+            UiEvents.Functions.ActionGrid("ActionGrid");
+        }
+    };
+    self.AddNewSettingActionApprovalLevel = function () {
+        
+        let item = ko.toJS(self.ActionApprovalLevel());
+        if (!self.Master().BranchCategoryValue()) {
+            Empower.message("Warning", "Warning ! - Branch category Cannot be empty...!!!", $('#ddlBranchCategory'));
+            return;
+        }
+        if (!self.Master().NewEffectDate()) {
+            Empower.message("Warning", "Warning ! - Effect date cannot be empty...!!!", $('#txtNewEffectDate'));
+            return;
+        }
+        else {
+            if (!item.RoleCode || !item.RoleName) {
+                Empower.message("Warning", "Warning ! - Role is not defned...!!!", $('#txtRoleName'));
+                return;
+            }
+            if (!item.BranchCategoryValue) {
+                Empower.message("Warning", "Warning ! - Approval Office is not defned...!!!", $('#ddlApprovalBranchCategory'));
+                return;
+            }
+
+            if (self.NewSettingActionApprovalLevelList().find(x => x.RoleCode == item.RoleCode && x.BranchCategoryValue == item.BranchCategoryValue)) {
+                Empower.message("Warning", "Warning ! - Role and Approval Office exists in role list...!!!", $('#txtRoleName'));
+                return;
+            }
+
+            item.Id = Number(self.ActionSelect().Id());
+            item.ActionValue = self.NewSettingActionValue();
+            let BName = $("#ddlApprovalBranchCategory option:selected").text();
+            self.ActionApprovalLevel().BranchCategoryName(BName);
+            let resultList = [];
+            let existingList = ko.toJS(self.NewSettingActionApprovalLevelList());
+
+            if (existingList.length > 0) {
+                for (var i = 0; i < existingList.length; i++) {
+                    let data = {
+                        "Id": existingList[i].Id,
+                        "Level": i + 1,
+                        "RoleCode": existingList[i].RoleCode,
+                        "RoleName": existingList[i].RoleName,
+                        "BranchCategoryValue": existingList[i].BranchCategoryValue,
+                        "BranchCategoryName": existingList[i].BranchCategoryName,
+                    };
+                    resultList.push(data);
+                }
+            }
+
+            let newData = {
+                "Id": self.ActionApprovalLevel().Id(),
+                "Level": resultList.length + 1,
+                "RoleCode": self.ActionApprovalLevel().RoleCode(),
+                "RoleName": self.ActionApprovalLevel().RoleName(),
+                "BranchCategoryName": self.ActionApprovalLevel().BranchCategoryName(),
+                "BranchCategoryValue": self.ActionApprovalLevel().BranchCategoryValue(),
+            };
+            resultList.push(newData);
+            self.NewSettingActionApprovalLevelList(ko.toJS(resultList));
+
+            UiEvents.Functions.ActionApprovalGrid("NewActionApprovalLevelGrid");
+             self.ActionApprovalLevel().Level("");
+            self.ActionApprovalLevel().RoleCode("");
+            self.ActionApprovalLevel().RoleName("");
+            self.ActionApprovalLevel().BranchCategoryValue("");
+            self.ActionApprovalLevel().BranchCategoryName("");
+            UiEvents.focus("ddlApprovalBranchCategory");
+        }
+    };
+    self.EditViewLevelApproval = function (rowIndx, ActionValue) {
+
+        self.HdnIndex(rowIndx);
+        self.ActionSelect().Id(rowIndx);
+        let listData = $("#ActionGrid").pqGrid("getRowData", { rowIndx: rowIndx });
+        self.ActionApprovalLevel(new models.ActionApprovalLevel(listData));
+        self.NewSettingActionApprovalLevelList([]);
+        self.NewSettingActionApprovalLevelList(listData.actionapprovallevelList);
+        UiEvents.Functions.ActionApprovalGrid("NewActionApprovalLevelGrid");
+        $("#popUpActionApprovalLevel").dialog('open');
+        UiEvents.autocomplete();
+        UiEvents.onchange();
+
+    };
+    self.removeAction = function (index) {
+        if (confirm("Are you sure you want to delete this data?")) {
+            self.ActionList.splice(index, 1);
+            UiEvents.Functions.ActionGrid("ActionGrid");
+        }
+    };
+    self.ViewEffectDate = function (rowIndx, Id, Date) {
+        
+            self.RevertId('');
+            self.selectedDate('');
+
+            self.selectedDate(Date);
+            self.RevertId(Id);
+            self.enablebtnRevert(true);
+
+            if (self.selectedDate() > self.Master().TodayDate()) {
+                btn = `<button style="height: 30px; margin-bottom: 4px; width:100%; border-radius: 7.5px;" type="button" class="emp-btn red pull-right" title="Delete" onclick="obj.RevertScreenAction()">Delete Future Setting</button>`;
+            }
+            else {
+                btn = `<button style="height: 30px; margin-bottom: 4px; width:100%;border-radius: 7.5px;color:white;background-color:red;" type="button" class="emp-btn pull-right" title="Delete" onclick="obj.RevertScreenAction()">Delete Setting</button>`;
+            }
+            $("#DeleteRec").html(btn);
+
+
+            UiEvents.GetScreenList(Id, 1);
+
+            UiEvents.Functions.ViewScreenHistoryGrid("ViewHistoryScreenSelectionGrid");
+            
+            UiEvents.GetViewHistoryAction(Id);
+
+            UiEvents.Functions.ViewActionHistoryGrid("ViewHistoryActionOptionGrid");
+            self.ViewHistoryActionApprovalLevelList([]);
+            UiEvents.Functions.ViewApprovalLevelGrid("ViewHistoryActionApprovalLevelGrid");
+           // $("#ViewHistoryActionApprovalLevelGrid").pqGrid("refresh");
+        
+    };
+    self.ViewActionLevel = function (MastId, ActionValue) {
+        self.ViewHistoryActionApprovalLevelList([]);
+        UiEvents.GetViewHistoryActionRoleLevel(MastId,ActionValue);
+    };
+    self.RevertScreenAction = function () {
+        
+        if (new EmpCommon().isHo != "True") {
+            Empower.message("Warning", "Warning-! Branch Office Cannot Create, Change or Delete This Parameter...!!!");
+            return;
+        }
+
+        Empower.confirm("Confirm to delete?", function () {
+            const MasterData = ko.toJS(self.Master());
+            MasterData.TranId = self.RevertId();
+            ajaxConfig.method = "POST";
+            ajaxConfig.url = ajaxConfig.baseUrl + "RevertScreenApprovalFlowSetup";
+            ajaxConfig.data = JSON.stringify({
+                data: MasterData
+            });
+            ajaxConfig.success = function (data) {
+                if (data.Success) {
+                    Empower.message("success", data.Message);
+                    UiEvents.GetEffectDateList();
+
+                    self.ViewHistoryScreenSelectionList([]);
+                    self.ViewHistoryActionList([]);
+                    self.ViewHistoryActionApprovalLevelList([]);
+                    //UiEvents.EffectDateGrid(self.ViewHistoryEffectDateList(), "ViewHistoryEffectDateGrid");
+                    //UiEvents.ScreenSelectionGrid(self.ViewHistoryScreenSelectionList(), "ViewHistoryScreenSelectionGrid");
+                    //UiEvents.ActionGrid(self.ViewHistoryActionList(), "ViewHistoryActionOptionGrid");
+                    //UiEvents.ApprovalLevelGrid(self.ViewHistoryActionApprovalLevelList(), "ViewHistoryActionApprovalLevelGrid");
+                    //$("#ViewHistoryEffectDateGrid").pqGrid("refresh");
+                    self.RevertId('');
+                    self.selectedDate('');
+
+                    let tmp_btn = `<button style="height: 30px; margin-bottom: 4px; width:100%; border-radius: 7.5px;" type="button" class="emp-btn red pull-right" title="Delete" disabled="disabled">Delete Setting</button>`;
+                    $("#DeleteRec").html(tmp_btn);
+
+                } else {
+                    Empower.message("warning", data.Message);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        }, "");
+    };
+    self.ClearNewSettingActionApprovalLevel = function () {
+        //self.ActionApprovalLevel = ko.observable(new models.ActionApprovalLevel());
+        self.ActionApprovalLevel().RoleName("");
+        self.ActionApprovalLevel().BranchCategoryValue("");
+    };
+
+    init = function () {
+        models.UiElements();
+        UiEvents.Buttons();
+        UiEvents.GetBranchCategory();
+        UiEvents.Search();
+        UiEvents.Date();
+        UiEvents.autocomplete();
+        UiEvents.onchange();
+        UiEvents.dialog();
+    };
+    init();
+};
+
+var obj;
+$(document).ready(function () {
+    obj = new AuditReportTypeViewModel();
+    ko.applyBindings(obj);
+    $("#tabs").tabs();
+    $("#more-tabs").tabs();
+    UiEvents.Functions.ScreenSelectGrid("ScreenGrid");
+    $("#more-tabs, #Action").click(function () {
+        UiEvents.Functions.ActionGrid("ActionGrid");
+    });
+    $("#tabs, #ViewSetting").click(function () {
+        UiEvents.Functions.ViewApprovalLevelGrid("ViewHistoryActionApprovalLevelGrid");
+        UiEvents.Functions.ViewScreenHistoryGrid("ViewHistoryScreenSelectionGrid");
+        UiEvents.Functions.ViewActionHistoryGrid("ViewHistoryActionOptionGrid");
+        UiEvents.Functions.EffectDateGrid("ViewHistoryEffectDateGrid");
+    });
+});
+

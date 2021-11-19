@@ -1,0 +1,490 @@
+const pqOptions = {
+    width: "auto",
+    height: 250,
+    showTitle: false,
+    showHeader: true,
+    showTop: true,
+    showToolbar: false,
+    showBottom: true,
+    wrap: true,
+    hwrap: false,
+    sortable: false,
+    editable: false,
+    resizable: false,
+    collapsible: false,
+    draggable: true, dragColumns: { enabled: true },
+    scrollModel: { autoFit: true },
+    numberCell: { show: true, resizable: true, title: "S.N.", minWidth: 30 },
+    pageModel: { curPage: 1, rPP: 10, type: "remote" },
+    columnTemplate: { wrap: true, editable: false, dataType: "string", halign: "center", hvalign: "center", resizable: true, styleHead: { 'font-weight': "bold" } },
+};
+
+function AccountMappingViewModel() {
+    const self = this;
+    isNullOrEmpty = function (str) {
+        if (str === undefined || str === null) {
+            return true;
+        } else if (typeof str === "string") {
+            return (str.trim() === "");
+        } else {
+            return false;
+        }
+    };
+    var ajaxConfig = {
+        success: function () { },
+        method: "POST",
+        async: false,
+        baseUrl: "/AccountMapping/",
+        url: "",
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        data: "",
+        error: function (data) {
+
+        }
+    },//eof the ajax path
+        ajaxCall = function (config) {
+            debugger
+            $.ajax({
+                method: config.method,
+                async: config.async,
+                url: config.url,
+                contentType: config.contentType,
+                dataType: config.dataType,
+                data: config.data,
+                success: function (data) {
+                    ajaxConfig.success(data);
+                },
+
+                error: function (error) {
+                    ajaxConfig.error(error);
+                }
+            });
+        },
+        models = {
+            Transaction: function (item) {
+                item = item || {};
+                this.TranId = ko.observable(item.TranId||'');
+                this.GLHeadCode = ko.observable(item.GLHeadCode || '');
+                this.GLHeadName = ko.observable(item.GLHeadName || '');
+                this.CopomisCode = ko.observable(item.CopomisCode || '');
+                this.CopomisName = ko.observable(item.CopomisName || '');
+            },
+            UiElements : function () {
+               // koPageInit();
+                self.lblText = ko.observable();
+                self.Transaction = ko.observable(new models.Transaction());
+                self.StackNo = ko.observable();
+                self.HasRightsForApproval = ko.observable();
+                self.HasRightsForDelete = ko.observable();
+                self.enableTransaction = ko.observable(false);
+            }
+        }
+
+    UiEvents = {
+        Buttons: function () {
+            var actions = {
+                newClick: function () { UiEvents.ButtonsModeChange("new"); },
+                cancelClick: function () { UiEvents.ButtonsModeChange("cancel"); },
+                saveClick: function () { UiEvents.ButtonsModeChange("save"); },
+                deleteClick: function () { UiEvents.ButtonsModeChange("delete"); },
+                approveClick: function () { UiEvents.ButtonsModeChange("approve"); }
+            };
+            self.buttonSet = new buttons(actions);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttons = ko.observableArray([
+                self.buttonSet.newButton,
+                self.buttonSet.cancelButton,
+                self.buttonSet.saveButton,
+                self.buttonSet.deleteButton,
+                self.buttonSet.approveButton,
+                self.buttonSet.exitButton
+            ]);
+            self.buttonSet.newButton.visible(true);
+            self.buttonSet.cancelButton.visible(false);
+            self.buttonSet.saveButton.visible(false);
+            self.buttonSet.deleteButton.visible(false);
+            self.buttonSet.approveButton.visible(false);
+            self.buttonSet.exitButton.visible(true);
+        },
+        ButtonsModeChange: function (mode) {
+            switch (mode) {
+                case 'new':
+                    self.enableTransaction(true);
+                    self.buttonSet.newButton.visible(false);
+                    self.buttonSet.cancelButton.visible(true);
+                    self.buttonSet.saveButton.visible(true);
+                    self.buttonSet.exitButton.visible(true);
+                    $("#tabs").tabs({ active: 0 });
+                    $('#GLHeadCode').focus();
+                    break;
+                case 'cancel':
+                    self.lblText('');
+                    self.enableTransaction(false);
+                    UiEvents.ButtonsModeChange("default");
+                    UiEvents.ClearFields();
+                    break;
+                case 'save':
+                    const msg = UiEvents.Validate();
+                    if (msg) {
+                        Empower.message("WARNING", msg);
+                        $("#tabs").tabs({ active: 0 });
+                        return;
+                    }
+                    UiEvents.SaveProcess();
+                    UiEvents.ButtonsModeChange("default");
+                    UiEvents.ClearFields();
+                    break;
+                case 'delete':
+                    UiEvents.Ajax.Delete(); //Delete
+                    break;
+                case 'approve':
+                    UiEvents.Ajax.Approve(self.Transaction().TranId()); //Approve
+                    break;
+                case 'default':
+                    self.buttonSet.newButton.visible(true);
+                    self.buttonSet.cancelButton.visible(false);
+                    self.buttonSet.saveButton.visible(false);
+                    self.buttonSet.deleteButton.visible(false);
+                    self.buttonSet.approveButton.visible(false);
+                    self.buttonSet.exitButton.visible(true);
+                    break;
+                default:
+            }
+        },
+        Validate: function () {
+            var msg = "";
+            var master = ko.toJS(self.Transaction());
+
+            if (!(master.GLHeadCode && master.GLHeadName)) {
+                msg = "Warning - ! GL Head is not defined ...!!!";
+                UiEvents.focus("GLHeadCode");
+                return msg;
+            }
+            else if (!(master.CopomisCode && master.CopomisName)) {
+                msg = "Warning - ! COPOMIS GL Head is not defined ...!!!";
+                UiEvents.focus("CopomisCode");
+                return msg;
+            }
+            return msg;
+        },
+        checkRightsForApproval: function () {
+            debugger
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + 'checkRightsForApproval';
+            ajaxConfig.data = {}
+            ajaxConfig.success = function (data) {
+                if (data) {
+                    self.HasRightsForApproval(data.Data);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },//eof CheckRightsForApproval
+        checkRightsForDelete: function () {
+            ajaxConfig.method = "GET";
+            ajaxConfig.url = ajaxConfig.baseUrl + 'checkRightsForDelete';
+            ajaxConfig.data = {}
+            ajaxConfig.success = function (data) {
+                if (data) {
+                    self.HasRightsForDelete(data.Data);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        }, //eof DeleteRights
+        focus: function (id) {
+            document.getElementById(id).focus();
+        },
+        DeleteRevert: function (id, IsDeleted) {
+            debugger
+            const data = ko.toJS(self.Transaction());
+            data.TranId = id ? id : self.Transaction().TranId();
+            ajaxConfig.method = "POST";
+            ajaxConfig.url = ajaxConfig.baseUrl + "RevertData"; //  FALSE: REVERT
+            ajaxConfig.data = JSON.stringify({
+                data: data,
+                "IsDeleted": IsDeleted
+            });
+            ajaxConfig.success = function (data) {
+                if (data.Success) {
+                    Empower.message("success", data.Message);
+                    $('#GLHeadGrid').pqGrid('refreshDataAndView');
+
+                } else {
+                    Empower.message("warning", data.Message);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        tabClickEvent: function () {
+
+            self.tabs = function () {
+                $("#tabs").tabs({
+                    activate: function (e, ui) {
+                            ctrl = "#GLHeadGrid";
+                            if ($(ctrl).pqGrid("instance")) {
+                                $(ctrl).pqGrid("destroy");
+                            }
+                        UiEvents.GLHeadGrid(ctrl);
+                    }
+                });
+            }
+        },
+        GLHeadGrid: function (control) {
+            debugger
+            const allData = {
+                location: "remote",
+                contentType: "application/json; charset=UTF-8",
+                dataType: "JSON",
+                method: "GET",
+                url: ajaxConfig.baseUrl + 'GetData',
+                recIndx: "TranId",
+                beforeSend: function (jqXHR, settings) {
+                    return true;
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    console.error(errorThrown);
+                },
+                getData: function (result) {
+                    if (result && result.Success) {
+                        const data = result.Data;
+                        //{curPage: int, data: [], totalRecords: int}
+                        return { curPage: result.CurrentPage, totalRecords: result.TotalRecords, data: data };
+                    }
+                    else {
+                        Empower.message("Warning", result.Message || "Warning ! - Error Occured...!!!");
+                        return { curPage: 0, totalRecords: 0, data: [] };;
+                    }
+                }
+            };
+
+            const options = Object.assign({}, pqOptions);
+                options.colModel = [
+                    { title: "COPOMIS GL HEAD", dataIndx: "CopomisName", width: "40%",align: "center" },
+                    { title: "Chart of Account GL Head", dataIndx: "GLHeadName", width: "40%", align: "center" },
+                    {
+                        title: "Action", render: function (ui) {
+                            debugger
+                                return ` <button type='button' style="height: 22px;margin-left:50px;" onclick='obj.deleteRow("${ui.rowData.TranId}","A")'><i class="fas fa-undo"></i></button>`
+                        }, width: "20%"
+                    },
+
+                ];
+             
+            options.dataModel = allData;
+            options.height = 380;
+
+            $(control).pqGrid(options);
+        },
+        autocomplete: function () {
+            $("#GLHeadName").EmpowerAutoComplete({
+                Url: ajaxConfig.baseUrl + "GetGLHead",
+                dataJson: function (request) {
+                    return {
+                        "GLHeadCode": request.term,
+                        "isAutocomplete": true
+                    }
+                },
+                labelProperty: "GLHeadName",
+                valueProperty: "GLHeadCode",
+                onDataEmpty: function () {
+                    self.Transaction().GLHeadCode("");
+                    self.Transaction().GLHeadName("");
+                },
+                showValue: false,
+                select: function (event, ui) {
+                    self.Transaction().GLHeadName(ui.label);
+                    self.Transaction().GLHeadCode(ui.value);
+                   
+                },
+                error: function (xhr, status, error) {
+                }
+            });
+
+            $("#CopomisName").EmpowerAutoComplete({
+                Url: ajaxConfig.baseUrl + "GetCopomisGLHead",
+                dataJson: function (request) {
+                    return {
+                        "CopomisCode": request.term,
+                        "isAutocomplete": true
+                    }
+                },
+                labelProperty: "CopomisName",
+                valueProperty: "CopomisCode",
+                onDataEmpty: function () {
+                    self.Transaction().CopomisCode("");
+                    self.Transaction().CopomisName("");
+                },
+                showValue: false,
+
+                select: function (event, ui) {
+                    debugger
+                    self.Transaction().CopomisName(ui.label);
+                    self.Transaction().CopomisCode(ui.value);
+                    self.Transaction().TranId(ui.data.TranId);
+                },
+                error: function (xhr, status, error) {
+                }
+            });
+
+        },
+        ClearFields: function () {
+            self.Transaction(new models.Transaction());
+            self.enableTransaction(false);
+        },
+        SaveProcess: function () {
+            const TransactionData = ko.toJS(self.Transaction());
+            ajaxConfig.method = "POST";
+            debugger
+            ajaxConfig.url = ajaxConfig.baseUrl + "SaveTransaction";
+            ajaxConfig.data = JSON.stringify({
+                obj: TransactionData
+            });
+            ajaxConfig.success = function (data) {
+                if (data.Success) {
+                    Empower.message("success", data.Message);
+                    UiEvents.ClearFields();
+                    UiEvents.ButtonsModeChange("Default");
+                    //self.mode("");
+                } else {
+                    Empower.message("warning", data.Message);
+                }
+            }
+            ajaxCall(ajaxConfig);
+        },
+        
+    };
+    self.btnSearchGLHead = function () {
+        $("#divSearchGLHead").SearchDialog({
+            container: "divSearchGLHead",
+            dialogWidth: "600",
+            jTableFields: {
+                GLHeadCode: {
+                    title: "GL Head Code",
+                    width: "35%"
+                },
+                GLHeadName: {
+                    title: "GL Head Name",
+                    width: "65%"
+                }
+            },
+            searchUrl: ajaxConfig.baseUrl + "SearchGLHead",
+            callback: propertyCallbackBlock,
+            //addtionalObject: getAdditionalData,
+            searchBy: ["GL HEAD NAME", "GL HEAD CODE"],
+            eventSources: ["#btnSearchGLHead"],
+            events: ["click"],
+            autoOpen: true
+        });
+
+        function propertyCallbackBlock(data, mode) {
+            self.Transaction().GLHeadName(data.GLHeadName);
+            self.Transaction().GLHeadCode(data.GLHeadCode);
+        }
+
+    };
+    self.btnSearchCopomis = function () {
+        $("#divSearchCopomisGLHead").SearchDialog({
+            container: "divSearchCopomisGLHead",
+            dialogWidth: "600",
+            jTableFields: {
+                CopomisCode: {
+                    title: "COPOMIS GL Head Code",
+                    width: "35%"
+                },
+                CopomisName: {
+                    title: "COPOMIS GL  Head Name",
+                    width: "65%"
+                }
+            },
+            searchUrl: ajaxConfig.baseUrl + "SearchCopomisGLHead",
+            callback: propertyCallbackBlock,
+            //addtionalObject: getAdditionalData,
+            searchBy: ["GL HEAD NAME", "GL HEAD CODE"],
+            eventSources: ["#btnSearchCopomis"],
+            events: ["click"],
+            autoOpen: true
+        });
+
+        function propertyCallbackBlock(data, mode) {
+            self.Transaction().CopomisName(data.CopomisName);
+            self.Transaction().CopomisCode(data.CopomisCode);
+            self.Transaction().TranId(data.TranId);
+        }
+
+    };
+    self.onchangeGLCode = function () {
+        debugger
+        ajaxConfig.method = "GET";
+        ajaxConfig.url = ajaxConfig.baseUrl + "GetGLHeads";
+        ajaxConfig.data = {
+            GLHeadCode: self.Transaction().GLHeadCode(),
+            isAutoComplete: false
+        };
+        ajaxConfig.success = function (data) {
+            if (data.Message) {
+                Empower.message("Warning", data.Message);
+                return;
+            }
+            if (data.Success && data.Data && data.Data.length > 0) {
+                data = data.Data;
+                self.Transaction().GLHeadCode(data[0].GLHeadCode);
+                self.Transaction().GLHeadName(data[0].GLHeadName);
+            } else {
+                self.Transaction().GLHeadCode("");
+                self.Transaction().GLHeadName("");
+            }
+        }
+        ajaxCall(ajaxConfig);
+    };
+    self.onchangeCopomisGLCode = function () {
+        debugger
+        ajaxConfig.method = "GET";
+        ajaxConfig.url = ajaxConfig.baseUrl + "GetCopomisGLHeads";
+        ajaxConfig.data = {
+            BranchCode: self.Transaction().CopomisCode(),
+            isAutoComplete: false
+        };
+        ajaxConfig.success = function (data) {
+            if (data.Message) {
+                Empower.message("Warning", data.Message);
+                return;
+            }
+            if (data.Success && data.Data && data.Data.length > 0) {
+                data = data.Data;
+                self.Transaction().CopomisCode(data[0].CopomisCode);
+                self.Transaction().CopomisName(data[0].CopomisName);
+                self.Transaction().TranId(data[0].TranId);
+            } else {
+                self.Transaction().CopomisCode("");
+                self.Transaction().CopomisName("");
+            }
+        }
+        ajaxCall(ajaxConfig);
+    };
+    self.deleteRow = function (id, action) {
+        debugger
+        Empower.confirm("Confirm To Revert?", function () {
+            UiEvents.DeleteRevert(id,false);
+            //$("#tabs").tabs({ active: 0 });
+        });
+    };
+    init = function () {
+        models.UiElements();
+        UiEvents.Buttons();
+        UiEvents.tabClickEvent();
+        UiEvents.checkRightsForApproval();
+        UiEvents.checkRightsForDelete();
+        UiEvents.autocomplete();
+        self.tabs();
+    };
+    init();
+};
+
+//var obj;
+$(document).ready(function () {
+    obj = new AccountMappingViewModel();
+    ko.applyBindings(obj);
+    $("#tabs").tabs();
+});
+
+
